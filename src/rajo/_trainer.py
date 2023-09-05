@@ -11,9 +11,9 @@ from glow import ichunked
 from torch import nn
 from tqdm.auto import tqdm
 
-from .. import metrics as m
-from ._loader import _Loader
+from . import metrics as m
 from .amp import Grads, get_grads
+from .data._loader import _Loader
 from .util import eval_
 
 

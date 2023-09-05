@@ -3,7 +3,7 @@ from itertools import count, islice
 import torch
 from torch.utils import data
 
-from rajo.nn import get_loader
+from rajo import get_loader
 
 
 class Dataset(data.Dataset):

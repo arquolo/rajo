@@ -11,15 +11,15 @@ from typing import Any, Protocol
 
 import numpy as np
 import torch
-from glow import buffered, chunked, map_n, roundrobin
-from glow.core._parallel import _get_executor, max_cpu_count
+from glow import (buffered, chunked, get_executor, map_n, max_cpu_count,
+                  roundrobin)
 from torch.utils.data import (Dataset, IterableDataset, RandomSampler, Sampler,
                               SequentialSampler)
 from torch.utils.data._utils import worker as torch_worker
 
 from ..distributed import get_ddp_info
+from ..util import _apply
 from ._sampler import DdpSampler, SamplerLike, generate_seed
-from .util import _apply
 
 _NUM_CPUS: int = os.cpu_count() or 1
 
@@ -224,7 +224,7 @@ class _IterableMultiLoader(_IterableLoader):
             _Worker(self.dataset, idx, self.max_workers, seed)
             for idx in range(self.max_workers)
         ]
-        with _get_executor(self.max_workers, True) as ex:
+        with get_executor(self.max_workers, True) as ex:
             yield from roundrobin(*(buffered(w, mp=ex) for w in workers))
 
 

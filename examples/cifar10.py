@@ -6,7 +6,7 @@ import glow
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 from torch.utils.data import RandomSampler
 from torchvision import transforms as tfs
 from torchvision.datasets import CIFAR10
