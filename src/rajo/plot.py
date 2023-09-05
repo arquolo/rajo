@@ -8,7 +8,7 @@ import graphviz
 import torch
 from glow import mangle, si
 from torch import nn
-from torch.autograd import Function
+from torch.autograd.graph import Node
 
 # TODO: Still buggy, continue research/refactor
 
@@ -55,7 +55,7 @@ class Builder:
 
         self._mangle = mangle()
         self._memo: dict[str, str] = {}
-        self._shapes: dict[Function, str] = {}
+        self._shapes: dict[Node, tuple] = {}
         root = graphviz.Digraph(
             name='root',
             graph_attr={
@@ -77,7 +77,7 @@ class Builder:
         )
         self.stack = [root]
 
-    def _add_op_node(self, grad_id: str, grad: Function):
+    def _add_op_node(self, grad_id: str, grad: Node):
         label = type(grad).__name__.replace('Backward', '')
         if grad in self._shapes:
             label = f'{label}\n=> {tuple(self._shapes[grad])}'
@@ -111,7 +111,7 @@ class Builder:
                     s.node(var_id, label, fillcolor='orange')
                 s.edge(var_id, grad_id)
 
-    def _traverse(self, grad: Function, depth: int = 0):
+    def _traverse(self, grad: Node, depth: int = 0):
         if grad is None or (grad_id := id_(grad)) in self._memo:
             return
 
@@ -156,7 +156,7 @@ class Builder:
         edges = []
         for t in flatten(ts):
             if t.grad_fn is not None:
-                self._shapes[t.grad_fn] = t.shape  # type: ignore[assignment]
+                self._shapes[t.grad_fn] = t.shape
                 edges += self._traverse(t.grad_fn)
         if not edges:
             return

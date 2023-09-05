@@ -3,7 +3,6 @@ __all__ = [
 ]
 
 from string import ascii_lowercase
-from typing import Optional
 
 import torch
 import torch.nn.functional as TF
@@ -32,7 +31,7 @@ class Bias2d(nn.Module):
     def __init__(self,
                  dim: int,
                  *size: int,
-                 device: Optional[torch.device] = None):
+                 device: torch.device | None = None):
         super().__init__()
         assert len(size) == 2
         self.bias = nn.Parameter(torch.empty(1, dim, *size, device=device))

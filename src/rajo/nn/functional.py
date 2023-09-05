@@ -1,13 +1,11 @@
 __all__ = ['conv2d_ws', 'upscale2d']
 
-from typing import Union
-
 import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.nn.utils import parametrize
 
-_size = Union[torch.Size, list[int], tuple[int, ...]]
+_size = torch.Size | list[int] | tuple[int, ...]
 
 
 # @torch.jit.script

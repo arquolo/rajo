@@ -15,7 +15,7 @@ class Transform(Protocol):
         raise NotImplementedError
 
     def __mul__(self, prob: float) -> 'Transform':
-        if not isinstance(prob, (int, float)):
+        if not isinstance(prob, int | float):
             return NotImplemented
         if not (0 <= prob <= 1):
             raise ValueError('Probability should be in [0.0 .. 1.0] range')

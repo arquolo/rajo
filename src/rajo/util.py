@@ -1,6 +1,6 @@
 __all__ = [
     'detach_', 'device', 'dump_to_onnx', 'eval_', 'frozen', 'inference',
-    'materialize', 'param_count', 'profile'
+    'param_count', 'profile'
 ]
 
 import functools

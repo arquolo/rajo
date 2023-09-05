@@ -40,7 +40,7 @@ def _materialize_cls(m: nn.modules.lazy._LazyProtocol):
 
 class _LazyModuleMixinV2(nn.modules.lazy.LazyModuleMixin):
     def _lazy_load_hook(self: nn.modules.lazy._LazyProtocol, *args, **kwargs):
-        super()._lazy_load_hook(*args, **kwargs)  # type: ignore
+        super()._lazy_load_hook(*args, **kwargs)
 
         if not self.has_uninitialized_params():  # type: ignore
             _materialize_cls(self)

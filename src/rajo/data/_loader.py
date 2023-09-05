@@ -276,7 +276,7 @@ def get_loader(dataset: Dataset,
             return _IterableLoader(dataset)
         return _IterableMultiLoader(dataset, max_workers)
 
-    else:  # noqa; RET505
+    else:  # noqa: RET505
         if not isinstance(dataset, Sized):
             raise TypeError("dataset should be sized when it's not iterable")
 
