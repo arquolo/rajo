@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __all__ = ['affine', 'flip', 'grid_shuffle', 'mask_dropout']
 
 import cv2

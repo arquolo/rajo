@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __all__ = [
     'Cat', 'Encoder', 'Ensemble', 'Gate', 'Residual', 'ResidualCat', 'pre_norm'
 ]

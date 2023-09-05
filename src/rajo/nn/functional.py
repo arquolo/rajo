@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __all__ = ['conv2d_ws', 'upscale2d']
 
 from typing import Union

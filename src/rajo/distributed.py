@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __all__ = [
     'auto_ddp', 'auto_model', 'barrier', 'get_ddp_info', 'reduce_if_needed'
 ]

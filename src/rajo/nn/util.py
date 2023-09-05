@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __all__ = [
     'detach_', 'device', 'dump_to_onnx', 'eval_', 'frozen', 'inference',
     'materialize', 'param_count', 'profile'

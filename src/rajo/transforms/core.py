@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __all__ = [
     'Chain', 'DualStageTransform', 'ImageTransform', 'MaskTransform',
     'Transform'
@@ -16,7 +14,7 @@ class Transform(Protocol):
     def __call__(self, rng: np.random.Generator, /, **data) -> dict[str, Any]:
         raise NotImplementedError
 
-    def __mul__(self, prob: float) -> Transform:
+    def __mul__(self, prob: float) -> 'Transform':
         if not isinstance(prob, (int, float)):
             return NotImplemented
         if not (0 <= prob <= 1):
@@ -30,10 +28,10 @@ class Transform(Protocol):
             self = self.func
         return _Maybe(self, prob)
 
-    def __rmul__(self, prob: float) -> Transform:
+    def __rmul__(self, prob: float) -> 'Transform':
         return self * prob
 
-    def __or__(self, rhs: Transform) -> _OneOf:
+    def __or__(self, rhs: 'Transform') -> '_OneOf':
         if not isinstance(rhs, Transform):
             return NotImplemented
         ts = (

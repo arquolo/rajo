@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __all__ = ['ConvCtx']
 
 import warnings
@@ -57,7 +55,7 @@ class ConvCtx:
             return 0
         return (total_padding // 2) * dilation
 
-    def _invert(self) -> ConvCtx:
+    def _invert(self) -> 'ConvCtx':
         return replace(self, parity=1 - self.parity)
 
     def conv(self,

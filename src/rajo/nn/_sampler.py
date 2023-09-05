@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __all__ = ['DdpSampler']
 
 from collections.abc import Iterator, Sized

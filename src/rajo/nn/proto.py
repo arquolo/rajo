@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __all__ = ['fc_densenet', 'max_vit', 'vit']
 
 from collections.abc import Iterable

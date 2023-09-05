@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __all__ = ['ActivationFn', 'LazyConvFn', 'LazyNormFn', 'NameMixin', 'round8']
 
 from typing import Protocol, TypeVar

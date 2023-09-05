@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __all__ = [
     'Lambda', 'Metric', 'Scores', 'Staged', 'compose', 'to_index',
     'to_index_sparse', 'to_prob', 'to_prob_sparse'
@@ -21,7 +19,7 @@ class Scores:
     tensors: dict[str, torch.Tensor] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, mapping: dict[str, torch.Tensor]) -> Scores:
+    def from_dict(cls, mapping: dict[str, torch.Tensor]) -> 'Scores':
         obj = cls()
         for k, v in mapping.items():
             if v.numel() == 1:

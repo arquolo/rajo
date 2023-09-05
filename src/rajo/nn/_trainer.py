@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __all__ = ['Trainer']
 
 from collections.abc import Callable, Iterable, Iterator

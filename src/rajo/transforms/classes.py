@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __all__ = [
     'BitFlipNoise', 'ChannelMix', 'ChannelShuffle', 'CutOut', 'DegradeJpeg',
     'DegradeQuality', 'Elastic', 'FlipAxis', 'HsvShift', 'LumaJitter',

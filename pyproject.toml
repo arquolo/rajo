@@ -92,7 +92,7 @@ ignore = [
 ]
 exclude = [".eggs", ".git", "__pycache__", "build", "dist"]
 line-length = 79
-target-version = "py39"
+target-version = "py310"
 unfixable = ["I001"]
 
 [tool.ruff.flake8-quotes]

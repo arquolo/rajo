@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __all__ = ['get_loader']
 
 import os
@@ -129,7 +127,7 @@ class _BatchableLoader(_PinnableLoader):
                               int(daemon))
 
     def shuffle(self,
-                sampler: Sampler | SamplerLike | None) -> _BatchableLoader:
+                sampler: Sampler | SamplerLike | None) -> '_BatchableLoader':
         """
         Reshuffle data at every epoch.
 
@@ -156,7 +154,7 @@ class _MapLoader(_BatchableLoader):
         return len(self.sampler)
 
     def shuffle(self,
-                sampler: Sampler | SamplerLike | bool | None) -> _MapLoader:
+                sampler: Sampler | SamplerLike | bool | None) -> '_MapLoader':
         if not sampler:
             return self
 
@@ -333,8 +331,7 @@ def collate(batch):
         return _apply_type(tp, {k: collate([x[k] for x in batch]) for k in x0})
 
     if isinstance(x0, Sequence):
-        assert len({len(x) for x in batch}) <= 1  # py3.10+: zip(strict=True)
-        list_ = [collate(samples) for samples in zip(*batch)]
+        list_ = [collate(samples) for samples in zip(*batch, strict=True)]
 
         if isinstance(x0, tuple) and hasattr(x0, '_fields'):  # namedtuple
             return tp(*list_)

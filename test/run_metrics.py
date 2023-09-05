@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import torch
 from matplotlib import pyplot as plt
 from torch import nn
