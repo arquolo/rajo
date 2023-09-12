@@ -4,8 +4,9 @@ from .context import ConvCtx
 from .convnets import (BottleneckResidualBlock, DenseBlock, DenseDelta,
                        ResNeXtBlock, SplitAttention, SqueezeExcitation, mbconv,
                        mobilenet_v2_block, mobilenet_v3_block, resnest_block)
+from .heads import MultiheadProb, Prob
 from .lazy import LazyBias2d, LazyConv2dWs, LazyGroupNorm, LazyLayerNorm
-from .simple import Decimate2d, Noise, Upscale2d
+from .simple import Decimate2d, Laplace, Noise, RgbToGray, Scale, Upscale2d
 from .transformers import (Attention, FeedForward, MaxVitBlock,
                            MultiAxisAttention, VitBlock)
 from .vision import Show
@@ -21,16 +22,21 @@ __all__ = [
     'Ensemble',
     'FeedForward',
     'Gate',
+    'Laplace',
     'LazyBias2d',
     'LazyConv2dWs',
     'LazyGroupNorm',
     'LazyLayerNorm',
     'MaxVitBlock',
     'MultiAxisAttention',
+    'MultiheadProb',
     'Noise',
+    'Prob',
     'ResNeXtBlock',
     'Residual',
     'ResidualCat',
+    'RgbToGray',
+    'Scale',
     'Show',
     'SplitAttention',
     'SqueezeExcitation',
