@@ -6,6 +6,8 @@ __all__ = [
     'VitBlock',
 ]
 
+from typing import Final
+
 import torch
 import torch.nn.functional as F
 from einops import rearrange
@@ -16,7 +18,7 @@ from torch import nn
 from .aggregates import pre_norm
 from .context import ConvCtx
 from .convnets import mbconv
-from .util import NameMixin, round8
+from .util import round8
 
 _IS_TORCH_1_12 = Version('1.12') <= Version(torch.__version__) < Version('2.0')
 _IS_TORCH_2X = Version(torch.__version__) >= Version('2.0')
@@ -35,7 +37,7 @@ class ReAttention(nn.Sequential):
         nn.init.normal_(self[1].weight)
 
 
-class Attention(NameMixin, nn.Module):
+class Attention(nn.Module):
     """
     Multihead self-attention module (M-SA)
     from [ViT](https://openreview.net/pdf?id=YicbFdNTTy).
@@ -43,7 +45,7 @@ class Attention(NameMixin, nn.Module):
     Supports Re-attention mechanism
     from [DeepViT](https://arxiv.org/abs/2103.11886).
     """
-    __constants__ = ['reattention']
+    reattention: Final[bool]
 
     def __init__(self,
                  dim: int,
@@ -68,7 +70,6 @@ class Attention(NameMixin, nn.Module):
             nn.Softmax(-1),
             nn.Dropout(dropout, inplace=True),
         )
-        self.reattention = reattention
         if reattention:
             self.attend.append(ReAttention(heads))
 
@@ -79,13 +80,21 @@ class Attention(NameMixin, nn.Module):
         )
         nn.init.xavier_normal_(fc.weight)
 
-        self.name = f'{dim}, {heads=}'
-        if qkv_bias:
-            self.name += ', qkv_bias=True'
-        if dropout:
-            self.name += f', {dropout=}'
-        if reattention:
-            self.name += ', reattention=True'
+        self.dim = dim
+        self.heads = heads
+        self.qkv_bias = qkv_bias
+        self.dropout = dropout
+        self.reattention = reattention
+
+    def __repr__(self) -> str:
+        line = f'{self.dim}, heads={self.heads}'
+        if self.qkv_bias:
+            line += ', qkv_bias=True'
+        if self.dropout:
+            line += f', droupout={self.dropout}'
+        if self.reattention:
+            line += ', reattention=True'
+        return f'{type(self).__module__}({line})'
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Optimized eval-only impl since Torch 1.12
@@ -155,7 +164,7 @@ class _RelativePositionalBias(nn.Module):
         return self.bias(self.indices)
 
 
-class MultiAxisAttention(NameMixin, nn.Module):
+class MultiAxisAttention(nn.Module):
     """
     Multi-axis self-attention (Max-SA)
     from [MaxViT](https://arxiv.org/abs/2204.01697)
@@ -186,11 +195,20 @@ class MultiAxisAttention(NameMixin, nn.Module):
             nn.Linear(dim, dim, bias=False),
             nn.Dropout(dropout, inplace=True),
         )
-        self.name = f'{dim}, {heads=}, {window_size=}'
-        if qkv_bias:
-            self.name += ', qkv_bias=True'
-        if dropout:
-            self.name += f', {dropout=}'
+        self.dim = dim
+        self.heads = heads
+        self.window_size = window_size
+        self.qkv_bias = qkv_bias
+        self.dropout = dropout
+
+    def __repr__(self) -> str:
+        line = f'{self.dim}'
+        line += f', heads={self.heads}, window_size={self.window_size}'
+        if self.qkv_bias:
+            line += ', qkv_bias=True'
+        if self.dropout:
+            line += f', dropout={self.dropout}'
+        return f'{type(self).__name__}({line})'
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # ... i d -> ... i d, self-attention over i
@@ -207,7 +225,7 @@ class MultiAxisAttention(NameMixin, nn.Module):
         return self.to_out(out)
 
 
-class FeedForward(NameMixin, nn.Sequential):
+class FeedForward(nn.Sequential):
     def __init__(self, dim: int, ratio: float, dropout: float = 0.):
         dim_inner = round8(dim * ratio)
         super().__init__(
@@ -217,9 +235,15 @@ class FeedForward(NameMixin, nn.Sequential):
             nn.Linear(dim_inner, dim),
             nn.Dropout(dropout, inplace=True),
         )
-        self.name = f'{dim}, {dim_inner=}'
-        if dropout:
-            self.name += f', {dropout=}'
+        self.dim = dim
+        self.dim_inner = dim_inner
+        self.dropout = dropout
+
+    def __repr__(self) -> str:
+        line = f'{self.dim}, dim_inner={self.dim_inner}'
+        if self.dropout:
+            line += f', dropout={self.dropout}'
+        return f'{type(self).__name__}({line})'
 
 
 # ----------------------------- complete blocks ------------------------------

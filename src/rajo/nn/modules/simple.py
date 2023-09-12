@@ -3,6 +3,7 @@ __all__ = [
 ]
 
 from string import ascii_lowercase
+from typing import Final
 
 import torch
 import torch.nn.functional as TF
@@ -12,7 +13,7 @@ from .. import functional as F
 
 
 class Noise(nn.Module):
-    __constants__ = ['std']
+    std: Final[float]
 
     def __init__(self, std: float):
         super().__init__()
@@ -57,7 +58,7 @@ class Bias2d(nn.Module):
 
 
 class Decimate2d(nn.Module):
-    __constants__ = ['stride']
+    stride: Final[int]
 
     def __init__(self, stride: int = 2):
         super().__init__()
@@ -92,7 +93,7 @@ class Upscale2d(nn.Module):
 
     For comparison see [here](http://entropymine.com/imageworsener/matching).
     """
-    __constants__ = ['stride']
+    stride: Final[int]
 
     def __init__(self, stride: int = 2):
         super().__init__()

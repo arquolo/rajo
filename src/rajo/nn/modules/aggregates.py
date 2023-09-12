@@ -3,7 +3,7 @@ __all__ = [
 ]
 
 from collections.abc import Iterable
-from typing import Literal
+from typing import Final, Literal
 
 import torch
 from torch import nn
@@ -12,17 +12,22 @@ from torch.utils.checkpoint import checkpoint
 from .lazy import LazyLayerNorm
 from .util import LazyNormFn
 
+_EnsembleMode = Literal['cat', 'sum', 'mean']
+
 
 class Ensemble(nn.ModuleList):
-    __constants__ = ['mode']
+    mode: Final[_EnsembleMode]
 
     def __init__(self, *branches: nn.Module | Iterable[nn.Module],
-                 mode: Literal['sum', 'cat']):
+                 mode: _EnsembleMode):
         modules = (
             b if isinstance(b, nn.Module) else nn.Sequential(*b)
             for b in branches)
         super().__init__(modules)
         self.mode = mode
+
+    def _cat(self, xs: list[torch.Tensor]) -> torch.Tensor:
+        return torch.cat(xs, dim=1)
 
     def _sum(self, xs: list[torch.Tensor]) -> torch.Tensor:
         r = xs[0]
@@ -30,16 +35,22 @@ class Ensemble(nn.ModuleList):
             r += x
         return r
 
-    def _cat(self, xs: list[torch.Tensor]) -> torch.Tensor:
-        return torch.cat(xs, dim=1)
+    def _mean(self, xs: list[torch.Tensor]) -> torch.Tensor:
+        r = xs[0]
+        for n, x in enumerate(xs[1:], 2):
+            r.lerp_(x, r.new_tensor(1 / n))
+        return r
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         ys: list[torch.Tensor] = [m(x) for m in self]
+        if self.mode == 'cat':
+            return self._cat(ys)
+
         if self.mode == 'sum':
             return self._sum(ys)
 
-        if self.mode == 'cat':
-            return self._cat(ys)
+        if self.mode == 'mean':
+            return self._mean(ys)
 
         raise NotImplementedError
 

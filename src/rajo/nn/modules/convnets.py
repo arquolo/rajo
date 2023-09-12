@@ -12,6 +12,8 @@ __all__ = [
     'resnest_block',
 ]
 
+from typing import Final
+
 import torch
 from einops.layers.torch import Rearrange, Reduce
 from torch import nn
@@ -19,7 +21,7 @@ from torchvision.ops.stochastic_depth import StochasticDepth
 
 from .aggregates import Cat, Ensemble, Gate, Residual
 from .context import ConvCtx
-from .util import ActivationFn, NameMixin, round8
+from .util import ActivationFn, round8
 
 # --------------------------------- densenet ---------------------------------
 
@@ -27,7 +29,9 @@ from .util import ActivationFn, NameMixin, round8
 class DenseBlock(nn.ModuleList):
     expansion = 4
     efficient = True
-    __constants__ = ['step', 'depth', 'bottleneck']
+    step: Final[int]
+    depth: Final[int]
+    bottleneck: Final[bool]
 
     def __init__(self,
                  depth: int = 4,
@@ -86,7 +90,7 @@ class DenseDelta(DenseBlock):
 # ---------------------------------- se-net ----------------------------------
 
 
-class SqueezeExcitation(NameMixin, Gate):
+class SqueezeExcitation(Gate):
     def __init__(self,
                  dim: int,
                  ratio: float = 0.25,
@@ -101,7 +105,11 @@ class SqueezeExcitation(NameMixin, Gate):
             scale_activation(),
             Rearrange('b c -> b c 1 1'),
         )
-        self.name = f'{dim}, {dim_inner=}'
+        self.dim = dim
+        self.dim_inner = dim_inner
+
+    def __repr__(self) -> str:
+        return f'{type(self).__name__}({self.dim}, dim_inner={self.dim_inner})'
 
 
 # ---------------------------------- resnet ----------------------------------
@@ -276,12 +284,12 @@ def mbconv(dim: int,
 # --------------------------------- resnest ----------------------------------
 
 
-class SplitAttention(NameMixin, nn.Module):
+class SplitAttention(nn.Module):
     """
     Split-Attention (aka Splat) block from ResNeSt.
     If radix == 1, equals to SqueezeExitation block from SENet.
     """
-    __constants__ = [*NameMixin.__constants__, 'radix']
+    radix: Final[int]
 
     def __init__(self,
                  dim: int,
@@ -293,7 +301,6 @@ class SplitAttention(NameMixin, nn.Module):
         dim_inner = dim * radix // 4
 
         super().__init__()
-        self.radix = radix
         self.to_radix = Rearrange('b (r gc) h w -> b r gc h w', r=radix)
         self.attn = nn.Sequential(
             # Mean by radix and spatial dims
@@ -309,7 +316,18 @@ class SplitAttention(NameMixin, nn.Module):
             Rearrange('b (g r c) 1 1 -> b r (g c)', g=groups, r=radix),
             nn.Sigmoid() if radix == 1 else nn.Softmax(1),
         )
-        self.name = f'{dim} -> {dim_inner} -> {dim}x{radix}, groups={groups}'
+        self.dim = dim
+        self.dim_inner = dim_inner
+        self.radix = radix
+        self.groups = groups
+
+    def __repr__(self) -> str:
+        line = f'{self.dim} -> {self.dim_inner} -> {self.dim}'
+        if self.radix != 1:
+            line += f'x{self.radix}'
+        if self.groups != 1:
+            line += f', groups={self.groups}'
+        return f'{type(self).__name__}({line})'
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         rchw = self.to_radix(x)

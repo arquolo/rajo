@@ -1,4 +1,4 @@
-__all__ = ['ActivationFn', 'LazyConvFn', 'LazyNormFn', 'NameMixin', 'round8']
+__all__ = ['ActivationFn', 'LazyConvFn', 'LazyNormFn', 'round8']
 
 from typing import Protocol, TypeVar
 
@@ -9,17 +9,6 @@ _T = TypeVar('_T')
 
 def pair(t: _T | tuple[_T, ...]) -> tuple[_T, ...]:
     return t if isinstance(t, tuple) else (t, t)
-
-
-class NameMixin:
-    __constants__ = ['name']
-    name: str
-
-    def __repr__(self) -> str:
-        return f'{type(self).__name__}({self.extra_repr()})'
-
-    def extra_repr(self) -> str:
-        return self.name
 
 
 class LazyConvFn(Protocol):
