@@ -1,5 +1,6 @@
-__all__ = ['ActivationFn', 'LazyConvFn', 'LazyNormFn', 'round8']
+__all__ = ['ActivationFn', 'LazyConvFn', 'LazyNormFn', 'round8', 'to_buffers']
 
+from functools import partial
 from typing import Protocol, TypeVar
 
 from torch import nn
@@ -43,3 +44,14 @@ def round8(v: float, divisor: int = 8) -> int:
     """
     n = v / divisor
     return int(max(n + 0.5, n * 0.9 + 1)) * divisor
+
+
+def to_buffers(module: nn.Module, persistent: bool = True) -> nn.Module:
+    """Make all parameters buffers"""
+    return module.apply(partial(_params_to_buffers, persistent=persistent))
+
+
+def _params_to_buffers(module: nn.Module, persistent: bool = True) -> None:
+    for name, p in [*module.named_parameters(recurse=False)]:
+        delattr(module, name)
+        module.register_buffer(name, p.data, persistent=persistent)

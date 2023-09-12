@@ -10,6 +10,7 @@ import torch.nn.functional as TF
 from torch import nn
 
 from .. import functional as F
+from .util import to_buffers
 
 
 class Noise(nn.Module):
@@ -141,10 +142,7 @@ class BlurPool2d(nn.Conv2d):
                  padding_mode: str = 'reflect'):
         super().__init__(dim, dim, kernel, stride, padding, 1, dim, False,
                          padding_mode)
-        del self.weight
-        self.register_buffer(
-            'weight', torch.empty(dim, 1, kernel, kernel), persistent=False)
-        self.reset_parameters()
+        to_buffers(self, persistent=False)
 
     def reset_parameters(self) -> None:
         if not self.in_channels:
