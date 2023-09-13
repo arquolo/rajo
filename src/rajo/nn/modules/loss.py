@@ -1,4 +1,4 @@
-__all__ = ['LossBroadcast', 'LossWeighted']
+__all__ = ['LossBroadcast', 'LossWeighted', 'NoisyBCEWithLogitsLoss']
 
 from collections.abc import Sequence
 from typing import Final
@@ -72,7 +72,7 @@ class LossWeighted(nn.Module):
 
     def __init__(self,
                  losses: Sequence[nn.Module],
-                 weights: Sequence[float] | None,
+                 weights: Sequence[float] | None = None,
                  reduce: bool = True) -> None:
         super().__init__()
         self.bases = nn.ModuleList(losses)
@@ -94,7 +94,34 @@ class LossWeighted(nn.Module):
     def forward(self, outputs: torch.Tensor,
                 targets: torch.Tensor) -> torch.Tensor | list[torch.Tensor]:
         tensors = [m(outputs, targets) for m in self.bases]
-        return _weight_sum_reduce(*tensors) if self.reduce else tensors
+        return _weight_sum_reduce(
+            *tensors, weight=self.weight, reduce=self.reduce)
+
+
+class NoisyBCEWithLogitsLoss(nn.BCEWithLogitsLoss):
+    label_smoothing: Final[float]
+
+    def __init__(self,
+                 weight: torch.Tensor | None = None,
+                 size_average=None,
+                 reduce=None,
+                 reduction: str = 'mean',
+                 pos_weight: torch.Tensor | None = None,
+                 label_smoothing: float = 0) -> None:
+        super().__init__(weight, size_average, reduce, reduction, pos_weight)
+        self.label_smoothing = label_smoothing
+
+    def extra_repr(self) -> str:
+        return f'label_smoothing={self.label_smoothing}'
+
+    def forward(self, outputs: torch.Tensor,
+                targets: torch.Tensor) -> torch.Tensor:
+        if outputs.requires_grad and (ls := self.label_smoothing):
+            targets_ = torch.empty_like(targets)
+            targets_.uniform_(-ls, ls).add_(targets).clamp_(0, 1)
+        else:
+            targets_ = targets
+        return super().forward(outputs, targets)
 
 
 def _weight_sum_reduce(
