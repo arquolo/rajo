@@ -1,7 +1,43 @@
-from .modules import (Ensemble, Noise, Residual, SplitAttention,
-                      SqueezeExcitation, Upscale2d)
+from . import functional
+from .modules import (
+    Attention, BottleneckResidualBlock, Decimate2d, DenseBlock, DenseDelta,
+    Encoder, Ensemble, FeedForward, Gate, Laplace, LazyBias2d, LazyConv2dWs,
+    LazyGroupNorm, LazyLayerNorm, LossBroadcast, LossWeighted, MaxVitBlock,
+    MultiAxisAttention, MultiheadProb, Noise, Prob, Residual, ResidualCat,
+    ResNeXtBlock, RgbToGray, Scale, Show, SplitAttention, SqueezeExcitation,
+    Upscale2d, VitBlock)
 
 __all__ = [
-    'Ensemble', 'Noise', 'Residual', 'SplitAttention', 'SqueezeExcitation',
-    'Upscale2d'
+    'Attention',
+    'BottleneckResidualBlock',
+    'Decimate2d',
+    'DenseBlock',
+    'DenseDelta',
+    'Encoder',
+    'Ensemble',
+    'FeedForward',
+    'Gate',
+    'Laplace',
+    'LazyBias2d',
+    'LazyConv2dWs',
+    'LazyGroupNorm',
+    'LazyLayerNorm',
+    'LossBroadcast',
+    'LossWeighted',
+    'MaxVitBlock',
+    'MultiAxisAttention',
+    'MultiheadProb',
+    'Noise',
+    'Prob',
+    'ResNeXtBlock',
+    'Residual',
+    'ResidualCat',
+    'RgbToGray',
+    'Scale',
+    'Show',
+    'SplitAttention',
+    'SqueezeExcitation',
+    'Upscale2d',
+    'VitBlock',
+    'functional',
 ]
