@@ -55,9 +55,10 @@ def kappa(mat: torch.Tensor) -> torch.Tensor:
 
 
 def kappa_quadratic_weighted(mat: torch.Tensor) -> torch.Tensor:
-    y, x = map(torch.arange, mat.shape)
+    assert mat.shape[0] == mat.shape[1]
+    r = torch.arange(mat.shape[0], device=mat.device)
 
-    weights = (y[:, None] - x[None, :]).double() ** 2
+    weights = (r[:, None] - r[None, :]).double() ** 2
     weights /= weights.max()
 
     expected = mat.sum(0) @ weights @ mat.sum(1)
