@@ -1,4 +1,4 @@
-__all__ = ['LossBroadcast', 'LossWeighted', 'NoisyBCEWithLogitsLoss']
+__all__ = ['LossWeighted', 'MultiheadLoss', 'NoisyBCEWithLogitsLoss']
 
 from collections.abc import Sequence
 from typing import Final
@@ -7,7 +7,41 @@ import torch
 from torch import nn
 
 
-class LossBroadcast(nn.Module):
+class _Weighted(nn.Module):
+    weight: torch.Tensor | None
+    reduce: Final[bool]
+
+    def __init__(self,
+                 num: int,
+                 weight: Sequence[float] | torch.Tensor | None = None,
+                 reduce: bool = True) -> None:
+        super().__init__()
+        if weight is not None:
+            if len(weight) == num:
+                weight = torch.as_tensor(weight, dtype=torch.float)
+                weight *= len(weight) / weight.sum()
+            else:
+                raise ValueError('each head should have weight')
+
+        self.register_buffer('weight', weight)
+        self.reduce = reduce
+
+    def extra_repr(self) -> str:
+        if self.weight is None:
+            return ''
+        return f'weight={self.weight.cpu().numpy().round(3)}'
+
+    def _to_output(
+            self,
+            tensors: list[torch.Tensor]) -> list[torch.Tensor] | torch.Tensor:
+        if self.weight is not None:
+            tensors = [t * w for t, w in zip(tensors, self.weight.unbind())]
+        if not self.reduce:
+            return tensors
+        return torch.stack(torch.broadcast_tensors(*tensors), -1).mean(-1)
+
+
+class MultiheadLoss(_Weighted):
     """
     Applies loss to each part of input.
 
@@ -19,35 +53,23 @@ class LossBroadcast(nn.Module):
     - targets: `(B, N, ...)` or same as outputs
     """
     head_dims: Final[list[int]]
-    weight: torch.Tensor | None
-    reduce: Final[bool]
 
     def __init__(
         self,
         base_loss: nn.Module,
         head_dims: Sequence[int],
-        head_weights: Sequence[float] | torch.Tensor | None = None,
+        weight: Sequence[float] | torch.Tensor | None = None,
         reduce: bool = True,
     ):
-        super().__init__()
+        super().__init__(len(head_dims), weight=weight, reduce=reduce)
         self.base_loss = base_loss
         self.head_dims = [*head_dims]
         self.num_heads = len(head_dims)
 
-        if head_weights is None:
-            weight = None
-        elif self.num_heads == len(head_weights):
-            weight = torch.as_tensor(head_weights)
-        else:
-            raise ValueError('each head should have weight')
-
-        self.register_buffer('weight', weight)
-        self.reduce = reduce
-
     def extra_repr(self) -> str:
         line = f'heads={self.head_dims}'
-        if self.weight is not None:
-            line += f', weight={self.weight.tolist()}'
+        if s := super().extra_repr():
+            line += f', {s}'
         return line
 
     def forward(self, outputs: torch.Tensor,
@@ -61,41 +83,21 @@ class LossBroadcast(nn.Module):
             targets.split(self.head_dims, dim=1))
 
         tensors = [self.base_loss(o, t) for o, t in zip(o_parts, t_parts)]
-
-        return _weight_sum_reduce(
-            *tensors, weight=self.weight, reduce=self.reduce)
+        return self._to_output(tensors)
 
 
-class LossWeighted(nn.Module):
-    weight: torch.Tensor | None
-    reduce: Final[bool]
-
+class LossWeighted(_Weighted):
     def __init__(self,
                  losses: Sequence[nn.Module],
-                 weights: Sequence[float] | None = None,
+                 weight: Sequence[float] | None = None,
                  reduce: bool = True) -> None:
-        super().__init__()
+        super().__init__(len(losses), weight=weight, reduce=reduce)
         self.bases = nn.ModuleList(losses)
-
-        if weights is None:
-            self.register_buffer('weight', None)
-        elif len(weights) == len(self.bases):
-            self.register_buffer('weight', torch.as_tensor(weights))
-        else:
-            raise ValueError('each loss should have weight')
-
-        self.reduce = reduce
-
-    def extra_repr(self) -> str:
-        if self.weight is None:
-            return ''
-        return f'weight={self.weight.tolist()}'
 
     def forward(self, outputs: torch.Tensor,
                 targets: torch.Tensor) -> torch.Tensor | list[torch.Tensor]:
         tensors = [m(outputs, targets) for m in self.bases]
-        return _weight_sum_reduce(
-            *tensors, weight=self.weight, reduce=self.reduce)
+        return self._to_output(tensors)
 
 
 class NoisyBCEWithLogitsLoss(nn.BCEWithLogitsLoss):
@@ -122,15 +124,3 @@ class NoisyBCEWithLogitsLoss(nn.BCEWithLogitsLoss):
         else:
             targets_ = targets
         return super().forward(outputs, targets)
-
-
-def _weight_sum_reduce(
-        *tensors: torch.Tensor,
-        weight: torch.Tensor | None = None,
-        reduce: bool = True) -> list[torch.Tensor] | torch.Tensor:
-    tensors_ = list(tensors)
-    if weight is not None:
-        tensors_ = [t * w for t, w in zip(tensors_, weight.unbind())]
-    if not reduce:
-        return tensors_
-    return torch.stack(torch.broadcast_tensors(*tensors_), -1).sum(-1)

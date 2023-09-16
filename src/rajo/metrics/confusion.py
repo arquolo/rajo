@@ -20,7 +20,7 @@ class Confusion(Staged):
         mat = torch.zeros(c, c, dtype=torch.long)
         mat.index_put_((true, pred), torch.tensor(1), accumulate=True)
 
-        return mat.double() / mat.sum()
+        return mat.float() / mat.sum()
 
     def collect(self, mat: torch.Tensor) -> dict[str, torch.Tensor]:
         c = mat.shape[0]
@@ -37,7 +37,8 @@ class ConfusionGrad(Confusion):
 
         if dist.is_initialized() and dist.get_world_size() > 1:
             mat = nn.all_reduce(mat)
-        return mat.double() / mat.sum()
+            assert mat is not None
+        return mat / mat.sum()
 
 
 def accuracy(mat: torch.Tensor) -> torch.Tensor:
@@ -58,7 +59,7 @@ def kappa_quadratic_weighted(mat: torch.Tensor) -> torch.Tensor:
     assert mat.shape[0] == mat.shape[1]
     r = torch.arange(mat.shape[0], device=mat.device)
 
-    weights = (r[:, None] - r[None, :]).double() ** 2
+    weights = (r[:, None] - r[None, :]).float() ** 2
     weights /= weights.max()
 
     expected = mat.sum(0) @ weights @ mat.sum(1)
@@ -72,3 +73,11 @@ def iou(mat: torch.Tensor) -> torch.Tensor:
 
 def dice(mat: torch.Tensor) -> torch.Tensor:
     return 2 * mat.diag() / (mat.sum(0) + mat.sum(1)).clamp(_EPS)
+
+
+def dice_mean(mat: torch.Tensor) -> torch.Tensor:
+    return dice(mat).mean()
+
+
+def support(mat: torch.Tensor) -> torch.Tensor:
+    return mat.sum(1)
