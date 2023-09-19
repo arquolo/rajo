@@ -3,9 +3,10 @@ from .modules import (
     Attention, BottleneckResidualBlock, Decimate2d, DenseBlock, DenseDelta,
     Encoder, Ensemble, FeedForward, Gate, Laplace, LazyBias2d, LazyConv2dWs,
     LazyGroupNorm, LazyLayerNorm, LossBroadcast, LossWeighted, MaxVitBlock,
-    MultiAxisAttention, MultiheadProb, Noise, NoisyBCEWithLogitsLoss, Prob,
-    Residual, ResidualCat, ResNeXtBlock, RgbToGray, Scale, Show,
-    SplitAttention, SqueezeExcitation, Upscale2d, VitBlock)
+    MultiAxisAttention, MultiheadAdapter, MultiheadProb, Noise,
+    NoisyBCEWithLogitsLoss, Prob, Residual, ResidualCat, ResNeXtBlock,
+    RgbToGray, Scale, Show, SplitAttention, SqueezeExcitation, Upscale2d,
+    VitBlock)
 
 __all__ = [
     'Attention',
@@ -26,6 +27,7 @@ __all__ = [
     'LossWeighted',
     'MaxVitBlock',
     'MultiAxisAttention',
+    'MultiheadAdapter',
     'MultiheadProb',
     'Noise',
     'NoisyBCEWithLogitsLoss',
