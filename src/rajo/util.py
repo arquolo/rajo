@@ -42,9 +42,9 @@ def device() -> torch.device:
 
 
 def param_count(module: nn.Module) -> int:
-    """Count of parameters in net, both training and not"""
-    params = {p for p in module.parameters() if not nn.parameter.is_lazy(p)}
-    return si(sum(p.numel() for p in params))
+    """Count of parameters/buffers in net, both training and not"""
+    tensors = set(module.parameters()) | set(module.buffers())
+    return si(sum(t.numel() for t in tensors if not nn.parameter.is_lazy(t)))
 
 
 @contextmanager
