@@ -1,6 +1,6 @@
-__all__ = ['MultiheadAdapter', 'MultiheadProb', 'Prob']
+__all__ = ['MultiheadAdapter', 'MultiheadMaxAdapter', 'MultiheadProb', 'Prob']
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Final
 
 import torch
@@ -45,45 +45,65 @@ class MultiheadAdapter(nn.Module):
     weight: Tensor
     head_dims: Final[list[int]]
     eps: Final[float]
-    prenorm: Final[bool]
-    logits: Final[bool]
+    from_logits: Final[bool]
 
     def __init__(self,
                  c: int,
-                 heads: Iterable[Iterable[Iterable[int]]],
+                 heads: Sequence[Sequence[Iterable[int]]],
                  eps: float = 1e-7,
-                 prenorm: bool = True,
-                 logits: bool = False) -> None:
+                 from_logits: bool = False) -> None:
         super().__init__()
-
-        heads_ = [[[*cs] for cs in head] for head in heads]
-        self.head_dims = [len(head) for head in heads_]
+        self.head_dims = [len(head) for head in heads]
 
         total_labels = sum(self.head_dims)
         weight = torch.zeros(total_labels, c)
         for row, cs in zip(weight.unbind(),
-                           (cs for head in heads_ for cs in head)):
+                           (cs for head in heads for cs in head)):
             for c_ in cs:
                 row[c_] = 1
         self.register_buffer('weight', weight)
 
         self.eps = eps
-        self.prenorm = prenorm
-        self.logits = logits
+        self.from_logits = from_logits
 
     def forward(self, x: Tensor) -> Tensor:
-        if self.prenorm:
+        if not self.from_logits:
             x = x.softmax(dim=1)
         x = _linear_nd(x, self.weight)
 
-        if self.logits:  # Raw logits
-            return x.clamp_min(self.eps).log()
+        if self.from_logits:  # Preserve logits
+            return x.clamp(self.eps, 1 - self.eps).log()
 
         # Per-head normalized probs
         return torch.cat(
             [h / h.sum(1, keepdim=True) for h in x.split(self.head_dims, 1)],
             dim=1,
         )
+
+
+class _SubsetMax(nn.Module):
+    ids: Tensor | None
+    default: Final[float]
+
+    def __init__(self, ids: Sequence[int]) -> None:
+        super().__init__()
+        self.register_buffer('ids', torch.as_tensor(ids) if ids else None)
+        self.default = float('-inf')
+
+    def forward(self, x: Tensor) -> Tensor:
+        if self.ids is not None:
+            return x[:, self.ids].amax(dim=1)
+
+        b, _, *volume = x.shape
+        return x.new_full((b, *volume), fill_value=self.default)
+
+
+class MultiheadMaxAdapter(nn.ModuleList):
+    def __init__(self, heads: Iterable[Iterable[Sequence[int]]]) -> None:
+        super().__init__([_SubsetMax(f) for head in heads for f in head])
+
+    def forward(self, x: Tensor) -> Tensor:
+        return torch.stack([m(x) for m in self], dim=1)
 
 
 def _linear_nd(x: Tensor,

@@ -4,7 +4,7 @@ from .context import ConvCtx
 from .convnets import (BottleneckResidualBlock, DenseBlock, DenseDelta,
                        ResNeXtBlock, SplitAttention, SqueezeExcitation, mbconv,
                        mobilenet_v2_block, mobilenet_v3_block, resnest_block)
-from .heads import MultiheadAdapter, MultiheadProb, Prob
+from .heads import MultiheadAdapter, MultiheadMaxAdapter, MultiheadProb, Prob
 from .lazy import LazyBias2d, LazyConv2dWs, LazyGroupNorm, LazyLayerNorm
 from .loss import LossWeighted, MultiheadLoss, NoisyBCEWithLogitsLoss
 from .simple import Decimate2d, Laplace, Noise, RgbToGray, Scale, Upscale2d
@@ -33,6 +33,7 @@ __all__ = [
     'MultiAxisAttention',
     'MultiheadAdapter',
     'MultiheadLoss',
+    'MultiheadMaxAdapter',
     'MultiheadProb',
     'Noise',
     'NoisyBCEWithLogitsLoss',
