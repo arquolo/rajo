@@ -1,19 +1,22 @@
-__all__ = ['LossWeighted', 'MultiheadLoss', 'NoisyBCEWithLogitsLoss']
+__all__ = [
+    'CrossEntropyLoss', 'LossWeighted', 'MultiheadLoss',
+    'NoisyBCEWithLogitsLoss'
+]
 
 from collections.abc import Sequence
 from typing import Final
 
 import torch
-from torch import nn
+from torch import Tensor, nn
 
 
 class _Weighted(nn.Module):
-    weight: torch.Tensor | None
+    weight: Tensor | None
     reduce: Final[bool]
 
     def __init__(self,
                  num: int,
-                 weight: Sequence[float] | torch.Tensor | None = None,
+                 weight: Sequence[float] | Tensor | None = None,
                  reduce: bool = True) -> None:
         super().__init__()
         if weight is not None:
@@ -31,9 +34,7 @@ class _Weighted(nn.Module):
             return ''
         return f'weight={self.weight.cpu().numpy().round(3)}'
 
-    def _to_output(
-            self,
-            tensors: list[torch.Tensor]) -> list[torch.Tensor] | torch.Tensor:
+    def _to_output(self, tensors: list[Tensor]) -> list[Tensor] | Tensor:
         if self.weight is not None:
             tensors = [t * w for t, w in zip(tensors, self.weight.unbind())]
         if not self.reduce:
@@ -58,7 +59,7 @@ class MultiheadLoss(_Weighted):
         self,
         base_loss: nn.Module,
         head_dims: Sequence[int],
-        weight: Sequence[float] | torch.Tensor | None = None,
+        weight: Sequence[float] | Tensor | None = None,
         reduce: bool = True,
     ):
         super().__init__(len(head_dims), weight=weight, reduce=reduce)
@@ -72,8 +73,8 @@ class MultiheadLoss(_Weighted):
             line += f', {s}'
         return line
 
-    def forward(self, outputs: torch.Tensor,
-                targets: torch.Tensor) -> torch.Tensor | list[torch.Tensor]:
+    def forward(self, outputs: Tensor,
+                targets: Tensor) -> Tensor | list[Tensor]:
         assert outputs.shape[0] == targets.shape[0]
         assert outputs.shape[1] == sum(self.head_dims)
         assert outputs.shape[2:] == targets.shape[2:]
@@ -94,8 +95,8 @@ class LossWeighted(_Weighted):
         super().__init__(len(losses), weight=weight, reduce=reduce)
         self.bases = nn.ModuleList(losses)
 
-    def forward(self, outputs: torch.Tensor,
-                targets: torch.Tensor) -> torch.Tensor | list[torch.Tensor]:
+    def forward(self, outputs: Tensor,
+                targets: Tensor) -> Tensor | list[Tensor]:
         tensors = [m(outputs, targets) for m in self.bases]
         return self._to_output(tensors)
 
@@ -104,11 +105,11 @@ class NoisyBCEWithLogitsLoss(nn.BCEWithLogitsLoss):
     label_smoothing: Final[float]
 
     def __init__(self,
-                 weight: torch.Tensor | None = None,
+                 weight: Tensor | None = None,
                  size_average=None,
                  reduce=None,
                  reduction: str = 'mean',
-                 pos_weight: torch.Tensor | None = None,
+                 pos_weight: Tensor | None = None,
                  label_smoothing: float = 0) -> None:
         super().__init__(weight, size_average, reduce, reduction, pos_weight)
         self.label_smoothing = label_smoothing
@@ -116,11 +117,51 @@ class NoisyBCEWithLogitsLoss(nn.BCEWithLogitsLoss):
     def extra_repr(self) -> str:
         return f'label_smoothing={self.label_smoothing}'
 
-    def forward(self, outputs: torch.Tensor,
-                targets: torch.Tensor) -> torch.Tensor:
+    def forward(self, outputs: Tensor, targets: Tensor) -> Tensor:
         if outputs.requires_grad and (ls := self.label_smoothing):
             targets_ = torch.empty_like(targets)
             targets_.uniform_(-ls, ls).add_(targets).clamp_(0, 1)
         else:
             targets_ = targets
         return super().forward(outputs, targets)
+
+
+class CrossEntropyLoss(nn.CrossEntropyLoss):
+    """Scales crossentropy loss w.r.t total sample size.
+
+    Standard crossentropy scales loss by count of non-ignored samples,
+    and if there're 0 of them, returns NAN.
+    This one never returns NAN.
+
+    If `full_size` is set, all samples are treated equally,
+    and crossentropy is scaled by total sample size instead
+    of count of non-ignored samples.
+    """
+    full_size: Final[bool]
+
+    def __init__(self,
+                 weight: Tensor | None = None,
+                 ignore_index: int = -100,
+                 label_smoothing: float = 0,
+                 full_size: bool = False) -> None:
+        super().__init__(
+            weight,
+            ignore_index=ignore_index,
+            reduction='mean',
+            label_smoothing=label_smoothing)
+        self.full_size = full_size
+
+    def extra_repr(self) -> str:
+        return 'full_size=True' if self.full_size else ''
+
+    def forward(self, outputs: Tensor, targets: Tensor) -> Tensor:
+        loss = super().forward(outputs, targets)
+
+        # Don't NAN
+        num_classes = outputs.shape[1]
+        support = ((targets >= 0) &
+                   (targets < num_classes)).mean(dtype=outputs.dtype)
+        loss = torch.where(support > 0, loss, loss.new_zeros(loss.shape))
+
+        # Scale to be crossentropy(y_pred, y).sum() / y.size
+        return (support * loss) if self.full_size else loss

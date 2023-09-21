@@ -6,7 +6,8 @@ from .convnets import (BottleneckResidualBlock, DenseBlock, DenseDelta,
                        mobilenet_v2_block, mobilenet_v3_block, resnest_block)
 from .heads import MultiheadAdapter, MultiheadMaxAdapter, MultiheadProb, Prob
 from .lazy import LazyBias2d, LazyConv2dWs, LazyGroupNorm, LazyLayerNorm
-from .loss import LossWeighted, MultiheadLoss, NoisyBCEWithLogitsLoss
+from .loss import (CrossEntropyLoss, LossWeighted, MultiheadLoss,
+                   NoisyBCEWithLogitsLoss)
 from .simple import Decimate2d, Laplace, Noise, RgbToGray, Scale, Upscale2d
 from .transformers import (Attention, FeedForward, MaxVitBlock,
                            MultiAxisAttention, VitBlock)
@@ -16,6 +17,7 @@ __all__ = [
     'Attention',
     'BottleneckResidualBlock',
     'ConvCtx',
+    'CrossEntropyLoss',
     'Decimate2d',
     'DenseBlock',
     'DenseDelta',
