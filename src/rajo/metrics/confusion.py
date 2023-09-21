@@ -18,9 +18,10 @@ class Confusion(Staged):
     def __call__(self, pred: Tensor, true: Tensor) -> Tensor:
         c, pred, true = to_index_sparse(pred, true)
 
-        mat = torch.zeros(c, c, dtype=torch.long)
-        mat.index_put_((true, pred), torch.tensor(1), accumulate=True)
+        if not true.numel():
+            return true.new_zeros(c, c)
 
+        mat = (true * c).add_(pred).bincount(minlength=c * c).view(c, c)
         return mat.float() / mat.sum()
 
     def collect(self, mat: Tensor) -> dict[str, Tensor]:
