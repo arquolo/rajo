@@ -11,15 +11,16 @@ from typing import Protocol, overload
 
 import torch
 from glow import coroutine
+from torch import Tensor
 
 
 @dataclass(frozen=True)
 class Scores:
     scalars: dict[str, float | int] = field(default_factory=dict)
-    tensors: dict[str, torch.Tensor] = field(default_factory=dict)
+    tensors: dict[str, Tensor] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, mapping: dict[str, torch.Tensor]) -> 'Scores':
+    def from_dict(cls, mapping: dict[str, Tensor]) -> 'Scores':
         obj = cls()
         for k, v in mapping.items():
             if v.numel() == 1:
@@ -30,18 +31,18 @@ class Scores:
 
 
 class MetricFn(Protocol):
-    def __call__(self, pred, true) -> torch.Tensor:
+    def __call__(self, pred, true) -> Tensor:
         ...
 
 
 class Metric(ABC):
     """Base class for metric"""
     @abstractmethod
-    def __call__(self, pred, true) -> torch.Tensor:
+    def __call__(self, pred, true) -> Tensor:
         raise NotImplementedError
 
     @abstractmethod
-    def collect(self, state: torch.Tensor) -> dict[str, torch.Tensor]:
+    def collect(self, state: Tensor) -> dict[str, Tensor]:
         raise NotImplementedError
 
 
@@ -61,24 +62,23 @@ class Lambda(Metric):
         self.fn = fn
         self.name = fn.__name__ if name is None else name
 
-    def __call__(self, pred, true) -> torch.Tensor:
+    def __call__(self, pred, true) -> Tensor:
         return self.fn(pred, true)
 
-    def collect(self, state: torch.Tensor) -> dict[str, torch.Tensor]:
+    def collect(self, state: Tensor) -> dict[str, Tensor]:
         return {self.name: state}
 
 
 class Staged(Metric):
     """Makes metric a "producer": applies multiple functions to its "state" """
-    def __init__(self, **funcs: Callable[[torch.Tensor], torch.Tensor]):
+    def __init__(self, **funcs: Callable[[Tensor], Tensor]):
         self.funcs = funcs
 
-    def collect(self, state: torch.Tensor) -> dict[str, torch.Tensor]:
+    def collect(self, state: Tensor) -> dict[str, Tensor]:
         return {key: fn(state) for key, fn in self.funcs.items()}
 
 
-def to_index(pred: torch.Tensor,
-             true: torch.Tensor) -> tuple[int, torch.Tensor, torch.Tensor]:
+def to_index(pred: Tensor, true: Tensor) -> tuple[int, Tensor, Tensor]:
     """
     Convert `pred` of logits with shape [B, C, ...] to [B, ...] of indices,
     i.e. tensors of long.
@@ -92,9 +92,7 @@ def to_index(pred: torch.Tensor,
     return c, pred, true
 
 
-def to_index_sparse(
-        pred: torch.Tensor,
-        true: torch.Tensor) -> tuple[int, torch.Tensor, torch.Tensor]:
+def to_index_sparse(pred: Tensor, true: Tensor) -> tuple[int, Tensor, Tensor]:
     """
     Convert `pred` of logits with shape [B, C, ...] to [B, ...] of indices,
     i.e. tensors of long. Drops bad indices.
@@ -109,8 +107,7 @@ def to_index_sparse(
     return c, pred[mask], true[mask]
 
 
-def to_prob(pred: torch.Tensor,
-            true: torch.Tensor) -> tuple[int, torch.Tensor, torch.Tensor]:
+def to_prob(pred: Tensor, true: Tensor) -> tuple[int, Tensor, Tensor]:
     """
     Convert `pred` of logits with shape [B, C, ...] to probs,
     i.e. tensors of float32.
@@ -119,16 +116,12 @@ def to_prob(pred: torch.Tensor,
     assert pred.shape[2:] == true.shape[1:]
     c = pred.shape[1]
 
-    with torch.autocast('cuda'):  # Softmax is always fp32
+    with torch.autocast(pred.device.type, enabled=pred.dtype == torch.half):
         pred = pred.softmax(dim=1)
-
-    assert pred.dtype == torch.float32
     return c, pred, true
 
 
-def to_prob_sparse(
-        pred: torch.Tensor,
-        true: torch.Tensor) -> tuple[int, torch.Tensor, torch.Tensor]:
+def to_prob_sparse(pred: Tensor, true: Tensor) -> tuple[int, Tensor, Tensor]:
     """
     Convert `pred` of logits with shape [B, C, ...] to probs,
     i.e. tensors of float.
@@ -147,8 +140,8 @@ def to_prob_sparse(
 
 @coroutine
 def _batch_averaged(
-    fn: Metric
-) -> Generator[dict[str, torch.Tensor], Sequence[torch.Tensor], None]:
+    fn: Metric,
+) -> Generator[dict[str, Tensor], Sequence[Tensor], None]:
     assert isinstance(fn, Metric)
     args = yield {}
     state = fn(*args)
@@ -158,11 +151,11 @@ def _batch_averaged(
 
 
 @coroutine
-def compose(*fns: Metric) -> Generator[Scores, Sequence[torch.Tensor], None]:
+def compose(*fns: Metric) -> Generator[Scores, Sequence[Tensor], None]:
     updates = *(_batch_averaged(fn) for fn in fns),
     args = yield Scores()
     while True:
-        scores: dict[str, torch.Tensor] = {}
+        scores: dict[str, Tensor] = {}
         for u in updates:
             scores |= u.send(args)
         args = yield Scores.from_dict(scores)
