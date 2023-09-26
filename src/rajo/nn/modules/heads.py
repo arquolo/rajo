@@ -38,7 +38,7 @@ class MultiheadProb(nn.Module):
         heads = [self.prob(h) for h in heads]
         if self.split:
             return heads
-        return torch.stack(heads, dim=1)
+        return torch.cat(heads, dim=1)
 
 
 class MultiheadAdapter(nn.Module):
