@@ -1,11 +1,27 @@
 from .base import Lambda, Metric, Scores, Staged, compose, to_index, to_prob
-from .confusion import (Confusion, ConfusionGrad, accuracy, accuracy_balanced,
-                        iou, kappa, kappa_quadratic_weighted)
-from .raw import accuracy_, auroc, average_precision, dice
+from .confusion import (Confusion, SoftConfusion, accuracy, accuracy_balanced,
+                        dice, iou, kappa, kappa_quadratic_weighted,
+                        sensitivity, specificity)
+from .raw import auroc, average_precision
 
 __all__ = [
-    'Confusion', 'ConfusionGrad', 'Lambda', 'Metric', 'Scores', 'Staged',
-    'accuracy', 'accuracy_', 'accuracy_balanced', 'auroc', 'average_precision',
-    'compose', 'dice', 'iou', 'kappa', 'kappa_quadratic_weighted', 'to_index',
-    'to_prob'
+    'Confusion',
+    'Lambda',
+    'Metric',
+    'Scores',
+    'SoftConfusion',
+    'Staged',
+    'accuracy',
+    'accuracy_balanced',
+    'auroc',
+    'average_precision',
+    'compose',
+    'dice',
+    'iou',
+    'kappa',
+    'kappa_quadratic_weighted',
+    'sensitivity',
+    'specificity',
+    'to_index',
+    'to_prob',
 ]

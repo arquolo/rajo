@@ -1,20 +1,30 @@
-__all__ = ['accuracy_', 'auroc', 'average_precision', 'dice']
+__all__ = ['accuracy', 'auroc', 'average_precision', 'dice_']
 
 import torch
 
 from .base import to_index, to_prob
 
 
-def accuracy_(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
+def accuracy(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
     # TODO: Add docs
     _, pred, true = to_index(pred, true)
     return (true == pred).double().mean()
 
 
-def dice(pred: torch.Tensor,
-         true: torch.Tensor,
-         macro: bool = True) -> torch.Tensor:
-    # TODO: Add docs
+def dice_(pred: torch.Tensor,
+          true: torch.Tensor,
+          macro: bool = True) -> torch.Tensor:
+    """Compute Dice metric for each class, result is C-vector.
+
+    If `macro` is set, then Dice values are computed over flattened sample.
+    Result cannot be averaged over epochs and suitable only
+    as current batch statistics.
+
+    If `macro` is not set, Dice values are compute per each sample in batch,
+    then averaged.
+    Such vectors CAN be averaged across all the batches, as they're
+    sample-linear.
+    """
     c, pred, true = to_index(pred, true)
 
     def _dice(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
@@ -29,8 +39,8 @@ def dice(pred: torch.Tensor,
         return _dice(pred, true)
 
     b = pred.shape[0]
-    *scores, = map(_dice, pred.view(b, -1).unbind(), true.view(b, -1).unbind())
-    return torch.mean(torch.stack(scores), dim=0)
+    scores = map(_dice, pred.view(b, -1).unbind(), true.view(b, -1).unbind())
+    return torch.mean(torch.stack([*scores]), dim=0)
 
 
 def _rankdata(ten: torch.Tensor) -> torch.Tensor:

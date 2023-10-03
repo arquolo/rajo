@@ -7,7 +7,7 @@ import rajo.nn
 from rajo import metrics as m
 
 metrics: tuple[m.Metric, ...] = (
-    m.Lambda(m.accuracy_),
+    m.Lambda(m.raw.accuracy),
     m.Confusion(
         acc=m.accuracy,
         accb=m.accuracy_balanced,
@@ -30,8 +30,8 @@ class Model(nn.Module):
 net = Model()
 net.param = nn.Parameter(data=pred, requires_grad=True)
 
-optim = rajo.nn.RAdam(net.parameters())
-cm_grad = m.ConfusionGrad()
+optim = rajo.optim.RAdam([*net.parameters()])
+cm_grad = m.SoftConfusion()
 
 plt.ion()
 _, ax = plt.subplots(ncols=4)
