@@ -1,3 +1,4 @@
+from . import roc
 from .base import Lambda, Metric, Scores, Staged, compose, to_index, to_prob
 from .confusion import (Confusion, SoftConfusion, accuracy, accuracy_balanced,
                         dice, iou, kappa, kappa_quadratic_weighted,
@@ -20,6 +21,7 @@ __all__ = [
     'iou',
     'kappa',
     'kappa_quadratic_weighted',
+    'roc',
     'sensitivity',
     'specificity',
     'to_index',
