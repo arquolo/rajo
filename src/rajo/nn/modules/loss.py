@@ -8,6 +8,8 @@ from typing import Final
 import torch
 from torch import Tensor, nn
 
+from rajo.distributed import reduce_if_needed
+
 
 class _Weighted(nn.Module):
     weight: Tensor | None
@@ -134,13 +136,16 @@ class BCEWithLogitsLoss(nn.BCEWithLogitsLoss):
 class CrossEntropyLoss(nn.CrossEntropyLoss):
     """Scales crossentropy loss w.r.t total sample size.
 
-    Standard crossentropy scales loss by count of non-ignored samples,
+    `torch.nn.CrossEntropyLoss` scales loss by count of non-ignored samples,
     and if there're 0 of them, returns NAN.
     This one never returns NAN.
 
     If `full_size` is set, all samples are treated equally,
     and crossentropy is scaled by total sample size instead
     of count of non-ignored samples.
+
+    If `full_size` is not set falls back to `torch.nn.CrossEntropyLoss` but
+    properly weights samples across whole world.
     """
     full_size: Final[bool]
 
@@ -163,10 +168,19 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
         loss = super().forward(outputs, targets)
 
         # Don't NAN
+        # NOTE: support computed for local rank only to scale loss properly
         num_classes = outputs.shape[1]
         support = ((targets >= 0) &
                    (targets < num_classes)).mean(dtype=outputs.dtype)
         loss = torch.where(support > 0, loss, loss.new_zeros(loss.shape))
 
-        # Scale to be crossentropy(y_pred, y).sum() / y.size
-        return (support * loss) if self.full_size else loss
+        if self.full_size:
+            # Scale to be crossentropy(y_pred, y).sum() / y.size
+            scale = support
+        else:
+            # Rescale to weight all samples equally across whole world
+            w_support, = reduce_if_needed(support, mean=True)
+            scale = torch.where(w_support > 0, support / w_support,
+                                support.new_zeros(support.shape))
+
+        return scale * loss
