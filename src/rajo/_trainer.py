@@ -8,7 +8,7 @@ from typing import Any
 import torch
 import torch.optim
 from glow import ichunked
-from torch import nn
+from torch import Tensor, nn
 from tqdm.auto import tqdm
 
 from . import metrics as m
@@ -28,23 +28,22 @@ class Stage:
             torch.autocast(self.device.type, dtype)
             if dtype in (torch.float16, torch.bfloat16) else nullcontext())
 
-    def _move(self, x: torch.Tensor) -> torch.Tensor:
+    def _move(self, x: Tensor) -> Tensor:
         return x.to(self.device, non_blocking=True)
 
-    def __call__(self, loader: _Loader) -> Iterator[tuple[torch.Tensor, ...]]:
+    def __call__(self, loader: _Loader) -> Iterator[tuple[Tensor, ...]]:
         raise NotImplementedError
 
 
 @dataclass
 class EvalStage(Stage):
-    def _step(self, data: torch.Tensor,
-              target: torch.Tensor) -> tuple[torch.Tensor, ...]:
+    def _step(self, data: Tensor, target: Tensor) -> tuple[Tensor, ...]:
         with self._autocast:
             out = self.net(self._move(data))
 
         return out, target
 
-    def __call__(self, loader: _Loader) -> Iterator[tuple[torch.Tensor, ...]]:
+    def __call__(self, loader: _Loader) -> Iterator[tuple[Tensor, ...]]:
         with eval_(self.net), torch.inference_mode():
             for data, target in loader:
                 yield self._step(self._move(data), self._move(target))
@@ -52,12 +51,11 @@ class EvalStage(Stage):
 
 @dataclass
 class TrainStage(Stage):
-    criterion: Callable[..., torch.Tensor]
+    criterion: Callable[..., Tensor]
     grads: Grads
     grad_steps: int = 1
 
-    def _step(self, data: torch.Tensor,
-              target: torch.Tensor) -> tuple[torch.Tensor, ...]:
+    def _step(self, data: Tensor, target: Tensor) -> tuple[Tensor, ...]:
         with self._autocast:
             out = self.net(self._move(data))
             loss = self.criterion(out, target)
@@ -65,7 +63,7 @@ class TrainStage(Stage):
         self.grads.backward(loss)
         return out.detach(), target
 
-    def __call__(self, loader: _Loader) -> Iterator[tuple[torch.Tensor, ...]]:
+    def __call__(self, loader: _Loader) -> Iterator[tuple[Tensor, ...]]:
         for batches in ichunked(loader, self.grad_steps):
             with self.grads:
                 for data, target in batches:
@@ -77,7 +75,7 @@ class Trainer:
     def __init__(self,
                  net: nn.Module,
                  opt: torch.optim.Optimizer,
-                 criterion: Callable[..., torch.Tensor],
+                 criterion: Callable[..., Tensor],
                  metrics: Iterable[m.Metric],
                  device: torch.device,
                  sched: torch.optim.lr_scheduler._LRScheduler | None = None,
@@ -122,7 +120,7 @@ class Trainer:
             assert tscalars.keys() == vscalars.keys()
             tags = sorted(tscalars.keys() | vscalars.keys())
 
-            # TODO: those lines should be moved outsize into loggers
+            # TODO: those lines should be moved outside into loggers
             line = ','.join(
                 f'{tag}: ' + '/'.join(f'{s[tag]:.3f}'
                                       for s in (tscalars, vscalars))

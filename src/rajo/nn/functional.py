@@ -1,15 +1,14 @@
 __all__ = ['conv2d_ws', 'upscale2d']
 
-import torch
 import torch.nn.functional as F
-from torch import nn
+from torch import Size, Tensor, nn
 from torch.nn.utils import parametrize
 
-_size = torch.Size | list[int] | tuple[int, ...]
+_size = Size | list[int] | tuple[int, ...]
 
 
 # @torch.jit.script
-def upscale2d(x: torch.Tensor, stride: int = 2) -> torch.Tensor:
+def upscale2d(x: Tensor, stride: int = 2) -> Tensor:
     # ! stride-aware fallback, works everywhere
     # x = F.interpolate(x, None, self.stride)
     # return F.avg_pool2d(x, self.stride, 1, 0)
@@ -21,9 +20,9 @@ def upscale2d(x: torch.Tensor, stride: int = 2) -> torch.Tensor:
     return F.interpolate(x, size, mode='bilinear', align_corners=True)
 
 
-def conv2d_ws(x: torch.Tensor,
-              weight: torch.Tensor,
-              bias: torch.Tensor | None = None,
+def conv2d_ws(x: Tensor,
+              weight: Tensor,
+              bias: Tensor | None = None,
               stride: _size | int = 1,
               padding: _size | int | str = 0,
               dilation: _size | int = 1,

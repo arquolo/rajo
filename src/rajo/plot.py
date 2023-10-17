@@ -7,7 +7,7 @@ from contextlib import ExitStack
 import graphviz
 import torch
 from glow import mangle, si
-from torch import nn
+from torch import Tensor, nn
 from torch.autograd.graph import Node
 
 # TODO: Still buggy, continue research/refactor
@@ -16,14 +16,14 @@ from torch.autograd.graph import Node
 def id_(x) -> str:
     if hasattr(x, 'variable'):
         x = x.variable
-    addr = x.storage().data_ptr() if isinstance(x, torch.Tensor) else id(x)
+    addr = x.storage().data_ptr() if isinstance(x, Tensor) else id(x)
     return hex(addr)
 
 
-def flatten(xs) -> Iterator[torch.Tensor]:
+def flatten(xs) -> Iterator[Tensor]:
     if xs is None:
         return
-    if isinstance(xs, torch.Tensor):
+    if isinstance(xs, Tensor):
         yield xs
         return
     if isinstance(xs, Iterable):
@@ -35,7 +35,7 @@ def flatten(xs) -> Iterator[torch.Tensor]:
     raise TypeError(f'Unsupported argument type: {type(xs)}')
 
 
-def sized(var: torch.Tensor):
+def sized(var: Tensor):
     if max(var.shape) == var.numel():
         return f'{tuple(var.shape)}'
     return f'{tuple(var.shape)}\n{si(var.numel())}'
@@ -83,7 +83,7 @@ class Builder:
             label = f'{label}\n=> {tuple(self._shapes[grad])}'
         self.stack[-1].node(grad_id, label)
 
-    def _add_var_node(self, var_id: str, var: torch.Tensor):
+    def _add_var_node(self, var_id: str, var: Tensor):
         label_ = []
         if param_name := self.params.get(var_id):
             root = self.stack[-1]
@@ -97,7 +97,7 @@ class Builder:
         root.node(var_id, label, fillcolor=color)
 
     def _traverse_saved(self, grad_id: str, *tensors):
-        tensors = *(v for v in tensors if isinstance(v, torch.Tensor)),
+        tensors = *(v for v in tensors if isinstance(v, Tensor)),
         if not tensors:
             return
         s_ctx = self.stack[-1].subgraph()

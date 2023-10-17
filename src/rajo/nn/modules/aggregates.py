@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from typing import Final, Literal
 
 import torch
-from torch import nn
+from torch import Tensor, jit, nn
 from torch.utils.checkpoint import checkpoint
 
 from .lazy import LazyLayerNorm
@@ -26,23 +26,23 @@ class Ensemble(nn.ModuleList):
         super().__init__(modules)
         self.mode = mode
 
-    def _cat(self, xs: list[torch.Tensor]) -> torch.Tensor:
+    def _cat(self, xs: list[Tensor]) -> Tensor:
         return torch.cat(xs, dim=1)
 
-    def _sum(self, xs: list[torch.Tensor]) -> torch.Tensor:
+    def _sum(self, xs: list[Tensor]) -> Tensor:
         r = xs[0]
         for x in xs[1:]:
             r += x
         return r
 
-    def _mean(self, xs: list[torch.Tensor]) -> torch.Tensor:
+    def _mean(self, xs: list[Tensor]) -> Tensor:
         r = xs[0]
         for n, x in enumerate(xs[1:], 2):
             r.lerp_(x, r.new_tensor(1 / n))
         return r
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        ys: list[torch.Tensor] = [m(x) for m in self]
+    def forward(self, x: Tensor) -> Tensor:
+        ys: list[Tensor] = [m(x) for m in self]
         if self.mode == 'cat':
             return self._cat(ys)
 
@@ -65,7 +65,7 @@ class _Sequential(nn.ModuleList):
     def __init__(self, *modules: nn.Module) -> None:
         super().__init__(modules)
 
-    def seq(self, x: torch.Tensor) -> torch.Tensor:
+    def seq(self, x: Tensor) -> Tensor:
         # Replicates nn.Sequential.forward
         for m in self:
             x = m(x)
@@ -74,19 +74,19 @@ class _Sequential(nn.ModuleList):
 
 class ResidualCat(_Sequential):
     """Returns `cat([input, self(input)], dim=1)`, useful for U-Net"""
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         return torch.cat([x, self.seq(x)], 1)
 
 
 class Gate(_Sequential):
     """Returns input * self(input)"""
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         return x * self.seq(x)
 
 
 class Residual(_Sequential):
     """Returns input + self(input)"""
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         return x + self.seq(x)
 
 
@@ -100,19 +100,19 @@ class Cat(_Sequential):
     ```
     Checkpoints if makes sense.
     """
-    def cat(self, xs: list[torch.Tensor]) -> torch.Tensor:
+    def cat(self, xs: list[Tensor]) -> Tensor:
         x = torch.cat(xs, 1) if len(xs) != 1 else xs[0]
         return self.seq(x)
 
-    @torch.jit.ignore
-    def _cp_proxy(self, xs: list[torch.Tensor]) -> torch.Tensor:
-        def closure(*xs: torch.Tensor) -> torch.Tensor:
+    @jit.ignore
+    def _cp_proxy(self, xs: list[Tensor]) -> Tensor:
+        def closure(*xs: Tensor) -> Tensor:
             return self.cat([*xs])
 
         return checkpoint(closure, *xs)
 
-    def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
-        if torch.jit.is_scripting() or torch.jit.is_tracing():
+    def forward(self, xs: list[Tensor]) -> Tensor:
+        if jit.is_scripting() or jit.is_tracing():
             # checkpoint fails with JIT
             return self.cat(xs)
 

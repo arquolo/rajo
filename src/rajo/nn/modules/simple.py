@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 import torch
 import torch.nn.functional as TF
-from torch import nn
+from torch import Tensor, jit, nn
 
 from .. import functional as F
 from .util import to_buffers
@@ -24,7 +24,7 @@ class Scale(nn.Module):
         super().__init__()
         self.scale = scale
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         return x * self.scale
 
     def extra_repr(self) -> str:
@@ -38,7 +38,7 @@ class Noise(nn.Module):
         super().__init__()
         self.std = std
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         if not self.training:
             return x
         return torch.empty_like(x).normal_(std=self.std).add_(x)
@@ -64,11 +64,11 @@ class Bias2d(nn.Module):
         _, dim, *space = self.bias.shape
         return f'features={dim}, size={tuple(space)}'
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         bias = self.bias
         size = [x.shape[2], x.shape[3]]
 
-        if torch.jit.is_tracing() or bias.shape[2:] != size:
+        if jit.is_tracing() or bias.shape[2:] != size:
             # Stretch to input size
             bias = TF.interpolate(
                 bias, size, mode='bicubic', align_corners=False)
@@ -83,7 +83,7 @@ class Decimate2d(nn.Module):
         super().__init__()
         self.stride = stride
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         return x[:, :, ::self.stride, ::self.stride]
 
     def extra_repr(self) -> str:
@@ -118,7 +118,7 @@ class Upscale2d(nn.Module):
         super().__init__()
         self.stride = stride
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         return F.upscale2d(x, self.stride)
 
     def extra_repr(self):
@@ -130,7 +130,7 @@ class Conv2dWs(nn.Conv2d):
     [Weight standartization](https://arxiv.org/pdf/1903.10520.pdf).
     Better use with GroupNorm(32, features).
     """
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         return F.conv2d_ws(x, self.weight, self.bias, self.stride,
                            self.padding, self.dilation, self.groups)
 
@@ -145,7 +145,7 @@ def _pascal_triangle(n: int) -> list[int]:
     return values[:n]
 
 
-def _outer_mul(*ts: torch.Tensor) -> torch.Tensor:
+def _outer_mul(*ts: Tensor) -> Tensor:
     assert all(t.ndim == 1 for t in ts)
     letters = ascii_lowercase[:len(ts)]
     return torch.einsum(','.join(letters) + ' -> ' + letters, *ts)
@@ -179,7 +179,7 @@ class BlurPool2d(nn.Conv2d):
 # --------------------------------- laplace ----------------------------------
 
 
-def _laplace_kernel(ksize: int, normalize: bool = True) -> torch.Tensor:
+def _laplace_kernel(ksize: int, normalize: bool = True) -> Tensor:
     assert ksize % 2 == 1, 'kernel must be odd'
     assert ksize <= 31, 'kernel must be not larger 31'
 

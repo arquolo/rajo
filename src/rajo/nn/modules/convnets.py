@@ -16,7 +16,7 @@ from typing import Final
 
 import torch
 from einops.layers.torch import Rearrange, Reduce
-from torch import nn
+from torch import Tensor, nn
 from torchvision.ops.stochastic_depth import StochasticDepth
 
 from .aggregates import Cat, Ensemble, Gate, Residual
@@ -70,19 +70,19 @@ class DenseBlock(nn.ModuleList):
             line += ', bottleneck=True'
         return f'{type(self).__name__}({line})'
 
-    def base_forward(self, x: torch.Tensor) -> list[torch.Tensor]:
+    def base_forward(self, x: Tensor) -> list[Tensor]:
         xs = [x]
         for m in self:
             xs.append(m(xs))
         return xs
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         xs = self.base_forward(x)
         return torch.cat(xs, 1)
 
 
 class DenseDelta(DenseBlock):
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         xs = self.base_forward(x)
         return torch.cat(xs[1:], 1)  # Omit original x
 
@@ -329,7 +329,7 @@ class SplitAttention(nn.Module):
             line += f', groups={self.groups}'
         return f'{type(self).__name__}({line})'
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         rchw = self.to_radix(x)
         rc = self.attn(x * self.radix if self.radix > 1 else x)
         chw = torch.einsum('b r c h w, b r c -> b c h w', rchw, rc)

@@ -5,8 +5,7 @@ __all__ = [
 
 import warnings
 
-import torch
-from torch import nn
+from torch import Size, Tensor, nn
 from torch.nn.parameter import UninitializedBuffer, UninitializedParameter
 
 from .simple import Bias2d, BlurPool2d, Conv2dWs
@@ -51,12 +50,12 @@ class _LazyBase(_LazyModuleMixinV2):
         if not self.has_uninitialized_params():  # type: ignore
             super().reset_parameters()  # type: ignore
 
-    def initialize_parameters(self, x: torch.Tensor) -> None:
+    def initialize_parameters(self, x: Tensor) -> None:
         if self.has_uninitialized_params():  # type: ignore
             self.materialize(x.shape)
             self.reset_parameters()
 
-    def materialize(self, shape: torch.Size) -> None:
+    def materialize(self, shape: Size) -> None:
         raise NotImplementedError
 
 
@@ -76,7 +75,7 @@ class LazyLayerNorm(_LazyBase, nn.LayerNorm):
             self.weight = UninitializedParameter()
             self.bias = UninitializedParameter()
 
-    def materialize(self, shape: torch.Size) -> None:
+    def materialize(self, shape: Size) -> None:
         rank = len(self.normalized_shape)
         self.normalized_shape = *shape[-rank:],
         if self.elementwise_affine:
@@ -100,7 +99,7 @@ class LazyGroupNorm(_LazyBase, nn.GroupNorm):
             self.weight = UninitializedParameter()
             self.bias = UninitializedParameter()
 
-    def materialize(self, shape: torch.Size) -> None:
+    def materialize(self, shape: Size) -> None:
         self.num_channels = shape[1]
         if self.affine:
             self.weight.materialize((self.num_channels, ))
@@ -124,7 +123,7 @@ class LazyBlurPool2d(_LazyBase, BlurPool2d):
         super().__init__(0, kernel, stride, padding, padding_mode)
         self.weight = UninitializedBuffer()
 
-    def materialize(self, shape: torch.Size) -> None:
+    def materialize(self, shape: Size) -> None:
         self.in_channels = self.out_channels = shape[-3]
         self.weight.materialize((self.out_channels, 1, *self.kernel_size))
 
@@ -138,5 +137,5 @@ class LazyBias2d(_LazyBase, Bias2d):
         super().__init__(0, 0, 0)
         self.bias = UninitializedParameter()
 
-    def materialize(self, shape: torch.Size) -> None:
+    def materialize(self, shape: Size) -> None:
         self.bias.materialize((1, *shape[1:]))

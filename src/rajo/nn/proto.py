@@ -6,7 +6,7 @@ from typing import Literal
 
 import torch
 from einops.layers.torch import Rearrange, Reduce
-from torch import nn
+from torch import Tensor, nn
 
 from .modules import (ConvCtx, DenseBlock, DenseDelta, Encoder, Ensemble,
                       LazyBias2d, MaxVitBlock, VitBlock)
@@ -76,14 +76,14 @@ class CatToken(nn.Module):  # [B, N, D] -> [B, 1 + N, D]
         num_tokens, features = self.token.shape
         return f'{num_tokens=}, {features=}'
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         b = x.shape[0]
         tokens = self.token.broadcast_to(b, -1, -1)
         return torch.cat((tokens, x), dim=1)
 
 
 class PopToken(nn.Module):  # [B, N, D] -> [B, D]
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         return x[:, 0, :]
 
 

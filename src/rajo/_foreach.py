@@ -6,7 +6,7 @@ __all__ = [
 from collections.abc import Iterable
 
 import torch
-from torch import Tensor
+from torch import Tensor, jit
 
 Number = int | float | bool
 
@@ -126,6 +126,6 @@ def zero_(self: Iterable[Tensor]):
 
 
 def can_do_foreach(tensors: Iterable[Tensor]) -> bool:
-    if torch.jit.is_scripting():
+    if jit.is_scripting():
         return False
     return all(tsr is None or not tsr.is_sparse for tsr in tensors)

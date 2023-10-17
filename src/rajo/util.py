@@ -13,14 +13,14 @@ from typing import Any, TypeVar, cast
 import numpy as np
 import torch
 from glow import si
-from torch import nn
+from torch import Tensor, nn
 
 _T = TypeVar('_T')
 _F = TypeVar('_F', bound=Callable[..., Iterator])
 
 
-def _apply(xs: _T, fn: Callable[[torch.Tensor], Any]) -> _T:
-    if isinstance(xs, torch.Tensor):
+def _apply(xs: _T, fn: Callable[[Tensor], Any]) -> _T:
+    if isinstance(xs, Tensor):
         return fn(xs)
 
     if isinstance(xs, str | bytes | np.ndarray):

@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from contextlib import contextmanager
 
 import torch
-from torch import nn, optim
+from torch import Tensor, nn, optim
 
 try:
     from .driver import get_gpu_capability
@@ -68,7 +68,7 @@ class Grads:
     def zero_grad(self) -> None:
         self._opt.zero_grad()
 
-    def backward(self, tensor: torch.Tensor):
+    def backward(self, tensor: Tensor):
         tensor.backward()
         self._num_backwards += 1
 
@@ -132,7 +132,7 @@ class _ScalingGrads(Grads):
         else:
             self._scale = self._scaler.get_scale()
 
-    def backward(self, tensor: torch.Tensor) -> None:
+    def backward(self, tensor: Tensor) -> None:
         self._scaler.scale(tensor).backward()
 
     def unscale_(self) -> None:
@@ -171,13 +171,13 @@ class _ScalingGrads(Grads):
 
 @contextmanager
 @torch.no_grad()
-def accumulating(params: Iterable[torch.Tensor], done: int):
-    def _borrow(p: torch.Tensor) -> torch.Tensor | None:
+def accumulating(params: Iterable[Tensor], done: int):
+    def _borrow(p: Tensor) -> Tensor | None:
         # Save old state
         grad, p.grad = p.grad, None
         return None if grad is None else grad.detach_()
 
-    def _update(p: torch.Tensor, grad: torch.Tensor | None):
+    def _update(p: Tensor, grad: Tensor | None):
         # In case the fail happened, or new grad is missing, use old grad
         if inf[0] or p.grad is None:
             p.grad = grad
@@ -237,10 +237,10 @@ class _GenericScalingGrads(Grads):
         }
         super().__init__(opt, sched)
 
-    def _unscale_grads_(self) -> tuple[torch.Tensor, ...]:
+    def _unscale_grads_(self) -> tuple[Tensor, ...]:
         devs = set[torch.device]()
         grad_groups: dict[tuple[torch.device, torch.dtype],
-                          list[torch.Tensor]] = defaultdict(list)
+                          list[Tensor]] = defaultdict(list)
         for p in self._params:
             if p.grad is None:
                 continue
@@ -261,7 +261,7 @@ class _GenericScalingGrads(Grads):
                 grads, infs[dev], inv_scale.to(dev, non_blocking=True))
         return *infs.values(),
 
-    def _update_(self, infs: Iterable[torch.Tensor]) -> None:
+    def _update_(self, infs: Iterable[Tensor]) -> None:
         # Collect infs from all devices
         found_inf, *rest = (
             inf.to(self._scale.device, non_blocking=True) for inf in infs)
@@ -271,7 +271,7 @@ class _GenericScalingGrads(Grads):
         torch._amp_update_scale_(self._scale, self._growth_tracker, found_inf,
                                  2.0, 0.5, _PATIENCE)
 
-    def backward(self, tensor: torch.Tensor) -> None:
+    def backward(self, tensor: Tensor) -> None:
         self._growth_tracker = self._growth_tracker.to(
             tensor.device, non_blocking=True)
         self._scale = self._scale.to(tensor.device, non_blocking=True)

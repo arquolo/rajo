@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from einops.layers.torch import Rearrange
 from packaging.version import Version
-from torch import nn
+from torch import Tensor, nn
 
 from .aggregates import pre_norm
 from .context import ConvCtx
@@ -96,7 +96,7 @@ class Attention(nn.Module):
             line += ', reattention=True'
         return f'{type(self).__module__}({line})'
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         # Optimized eval-only impl since Torch 1.12
         if _IS_TORCH_1_12 and not self.training and not self.reattention:
             in_w, in_b, out_w, out_b = (self.to_qkv[0].weight,
@@ -160,7 +160,7 @@ class _RelativePositionalBias(nn.Module):
         indices = pos @ torch.tensor([wdiff, 1])
         self.register_buffer('indices', indices, persistent=False)
 
-    def forward(self) -> torch.Tensor:
+    def forward(self) -> Tensor:
         return self.bias(self.indices)
 
 
@@ -210,7 +210,7 @@ class MultiAxisAttention(nn.Module):
             line += f', dropout={self.dropout}'
         return f'{type(self).__name__}({line})'
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         # ... i d -> ... i d, self-attention over i
         q, k, v = self.to_qkv(x).unbind(0)  # ... h i d
 

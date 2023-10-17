@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from einops import rearrange
-from torch import nn
+from torch import Tensor, nn
 
 # TODO: rewrite like `def traced(nn.Module) -> nn.Module`
 # TODO: use pyqt/matplotlib to create window
@@ -16,8 +16,8 @@ from torch import nn
 class Show(nn.Module):
     """Shows contents of tensors during forward pass"""
     nsigmas = 2
-    weight: torch.Tensor
-    bias: torch.Tensor
+    weight: Tensor
+    bias: Tensor
 
     def __init__(self, colored: bool = False):
         super().__init__()
@@ -31,7 +31,7 @@ class Show(nn.Module):
 
         self.close = weakref.finalize(self, cv2.destroyWindow, self.name)
 
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+    def forward(self, inputs: Tensor) -> Tensor:
         c = inputs.shape[1]
 
         with torch.no_grad():

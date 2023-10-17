@@ -13,6 +13,7 @@ import numpy as np
 import torch
 from glow import (buffered, chunked, get_executor, map_n, max_cpu_count,
                   roundrobin)
+from torch import Tensor
 from torch.utils.data import (Dataset, IterableDataset, RandomSampler, Sampler,
                               SequentialSampler)
 from torch.utils.data._utils import worker as torch_worker
@@ -295,7 +296,7 @@ def get_loader(dataset: Dataset,
 
 def convert(x):  # noqa: PLR0911
     tp = type(x)
-    if isinstance(x, torch.Tensor):
+    if isinstance(x, Tensor):
         return x
 
     if tp.__module__ == 'numpy' and not isinstance(x, np.str_ | np.bytes_):
@@ -347,7 +348,7 @@ def _apply_type(tp, x):
         return x
 
 
-def _collate_tensor(batch: Sequence[torch.Tensor]):
+def _collate_tensor(batch: Sequence[Tensor]):
     x = batch[0]
     out = None
     if torch_worker.get_worker_info() is not None:
@@ -373,7 +374,7 @@ def _nop(batch):
 
 
 _HINT: dict[type | tuple[type, ...], Callable] = {
-    torch.Tensor: _collate_tensor,
+    Tensor: _collate_tensor,
     np.ndarray: _collate_ndarray,  # For both ndarray and memmap
     # Skip strings
     bytes: _nop,
