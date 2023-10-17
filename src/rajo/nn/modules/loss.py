@@ -1,6 +1,5 @@
 __all__ = [
-    'CrossEntropyLoss', 'LossWeighted', 'MultiheadLoss',
-    'NoisyBCEWithLogitsLoss'
+    'BCEWithLogitsLoss', 'CrossEntropyLoss', 'LossWeighted', 'MultiheadLoss'
 ]
 
 from collections.abc import Sequence
@@ -101,28 +100,34 @@ class LossWeighted(_Weighted):
         return self._to_output(tensors)
 
 
-class NoisyBCEWithLogitsLoss(nn.BCEWithLogitsLoss):
+class BCEWithLogitsLoss(nn.BCEWithLogitsLoss):
+    """
+    Drop-in replacement of `torch.nn.BCEWithLogitsLoss`
+    with support of label smoothing.
+    """
     label_smoothing: Final[float]
 
     def __init__(self,
                  weight: Tensor | None = None,
-                 size_average=None,
-                 reduce=None,
                  reduction: str = 'mean',
                  pos_weight: Tensor | None = None,
                  label_smoothing: float = 0) -> None:
-        super().__init__(weight, size_average, reduce, reduction, pos_weight)
+        super().__init__(weight, reduction=reduction, pos_weight=pos_weight)
         self.label_smoothing = label_smoothing
 
     def extra_repr(self) -> str:
         return f'label_smoothing={self.label_smoothing}'
 
     def forward(self, outputs: Tensor, targets: Tensor) -> Tensor:
-        if outputs.requires_grad and (ls := self.label_smoothing):
-            targets_ = torch.empty_like(targets)
-            targets_.uniform_(-ls, ls).add_(targets).clamp_(0, 1)
-        else:
-            targets_ = targets
+        # Target to float
+        if not targets.dtype.is_floating_point:
+            targets = targets.to(torch.get_default_dtype())
+
+        if smoothing := self.label_smoothing:
+            delta = 1 - smoothing
+            eps = smoothing / 2
+            targets = (targets * delta).add_(eps)
+
         return super().forward(outputs, targets)
 
 

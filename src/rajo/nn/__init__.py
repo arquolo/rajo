@@ -1,15 +1,16 @@
 from . import functional
 from .modules import (
-    Attention, BottleneckResidualBlock, CrossEntropyLoss, Decimate2d,
-    DenseBlock, DenseDelta, Encoder, Ensemble, FeedForward, Gate, Laplace,
-    LazyBias2d, LazyConv2dWs, LazyGroupNorm, LazyLayerNorm, LossWeighted,
-    MaxVitBlock, MultiAxisAttention, MultiheadAdapter, MultiheadLoss,
-    MultiheadMaxAdapter, MultiheadProb, Noise, NoisyBCEWithLogitsLoss, Prob,
-    Residual, ResidualCat, ResNeXtBlock, RgbToGray, Scale, Show,
-    SplitAttention, SqueezeExcitation, Upscale2d, VitBlock)
+    Attention, BCEWithLogitsLoss, BottleneckResidualBlock, CrossEntropyLoss,
+    Decimate2d, DenseBlock, DenseDelta, Encoder, Ensemble, FeedForward, Gate,
+    Laplace, LazyBias2d, LazyConv2dWs, LazyGroupNorm, LazyLayerNorm,
+    LossWeighted, MaxVitBlock, MultiAxisAttention, MultiheadAdapter,
+    MultiheadLoss, MultiheadMaxAdapter, MultiheadProb, Noise, Prob, Residual,
+    ResidualCat, ResNeXtBlock, RgbToGray, Scale, Show, SplitAttention,
+    SqueezeExcitation, Upscale2d, VitBlock)
 
 __all__ = [
     'Attention',
+    'BCEWithLogitsLoss',
     'BottleneckResidualBlock',
     'CrossEntropyLoss',
     'Decimate2d',
@@ -32,7 +33,6 @@ __all__ = [
     'MultiheadMaxAdapter',
     'MultiheadProb',
     'Noise',
-    'NoisyBCEWithLogitsLoss',
     'Prob',
     'ResNeXtBlock',
     'Residual',
