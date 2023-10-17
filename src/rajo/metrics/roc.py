@@ -6,7 +6,8 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-from .base import Staged, to_prob_sparse
+from .base import Staged
+from .func import roc_confusion
 
 _EPS = torch.finfo(torch.float).eps
 
@@ -21,29 +22,8 @@ class Confusion(Staged):
         self.bins = bins
         self.normalize = normalize
 
-    def __call__(self, pred: Tensor, true: Tensor) -> Tensor:
-        c, pred, true = to_prob_sparse(pred, true)
-        assert c == 2  # todo: support c == 1
-
-        nt = self.bins + 1
-        if not true.numel():
-            return true.new_zeros(nt, 2, 2)
-
-        # N/P support
-        hist = true.bincount(minlength=2)
-
-        # (N) of [0 .. max bin]
-        pred = pred[:, 1].clamp(0, 1).mul_(self.bins).long()
-
-        # (T 2) of FP, TP
-        fp_tp = (pred * 2).add_(true).bincount(minlength=nt * 2).view(nt, 2)
-        fp_tp = fp_tp.flipud().cumsum_(dim=0).flipud()
-
-        # Endpoints
-        fp_tp[0] = hist
-        fp_tp[-1] = 0
-
-        mat = torch.stack([hist - fp_tp, fp_tp], -1)  # (T 2 *2*)
+    def __call__(self, y_pred: Tensor, y: Tensor, /) -> Tensor:
+        mat = roc_confusion(y_pred, y)  # (T 2 *2*)
         if not self.normalize:
             return mat
         return mat.float() / mat.sum((1, 2), keepdim=True)
@@ -56,7 +36,7 @@ def fpr_tpr(mat: Tensor) -> tuple[Tensor, Tensor]:
     """Tx2x2 matrix to pair of T-vectors"""
     assert mat.ndim == 3
     assert mat.shape[1:] == (2, 2)
-    fpr, tpr = (mat[:, :, 1] / mat.sum(2).clamp_(_EPS)).unbind(1)
+    fpr, tpr = (mat[:, :, 1] / mat.sum(2).clamp_min_(_EPS)).unbind(1)
     return fpr, tpr
 
 
@@ -96,7 +76,8 @@ def t_acc(mat: Tensor) -> Tensor:
     Tx2x2 matrix to scalar.
     """
     assert mat.shape[1:] == (2, 2)
-    acc = (mat.diagonal(dim1=1, dim2=2).sum(1) / mat.sum((1, 2)).clamp_(_EPS))
+    acc = mat.diagonal(dim1=1, dim2=2).sum(1)
+    acc = acc / mat.sum((1, 2)).clamp_min_(_EPS)
     idx = acc.argmax()
     return idx.float() / (mat.shape[0] - 1)
 

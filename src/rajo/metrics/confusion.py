@@ -14,25 +14,19 @@ __all__ = [
 ]
 
 import torch
-import torch.distributed as dist
 from torch import Tensor
-from torch.distributed import nn
 
-from .base import Staged, to_index_sparse, to_prob_sparse
+from .base import Staged
+from .func import confusion, soft_confusion
 
 _EPS = torch.finfo(torch.float).eps
 
 
 class Confusion(Staged):
-    """Confusion Matrix. Returns 2d tensor"""
-    def __call__(self, pred: Tensor, true: Tensor) -> Tensor:
-        c, pred, true = to_index_sparse(pred, true)
-
-        if not true.numel():
-            return true.new_zeros(c, c)
-
-        mat = (true * c).add_(pred).bincount(minlength=c * c).view(c, c)
-        return mat.float() / mat.sum()
+    """CxC confusion matrix"""
+    def __call__(self, y_pred: Tensor, y: Tensor, /) -> Tensor:
+        mat = confusion(y_pred, y)
+        return mat.float() / mat.sum().clamp_min_(1)
 
     def collect(self, mat: Tensor) -> dict[str, Tensor]:
         c = mat.shape[0]
@@ -41,26 +35,19 @@ class Confusion(Staged):
 
 class SoftConfusion(Confusion):
     """Confusion Matrix which can be used for loss functions"""
-    def __call__(self, pred: Tensor, true: Tensor) -> Tensor:
-        c, pred, true = to_prob_sparse(pred, true)
-
-        assert pred.dtype == torch.float32
-        mat = pred.new_zeros(c, c).index_add(0, true, pred)
-
-        if dist.is_initialized() and dist.get_world_size() > 1:
-            mat = nn.all_reduce(mat)
-            assert mat is not None
-        return mat / mat.sum()
+    def __call__(self, y_pred: Tensor, y: Tensor, /) -> Tensor:
+        _, mat = soft_confusion(y_pred, y)
+        return mat / mat.sum().clamp_min(_EPS)
 
 
 def accuracy(mat: Tensor) -> Tensor:
     """CxC matrix to scalar"""
-    return mat.trace() / mat.sum().clamp(_EPS)
+    return mat.trace() / mat.sum().clamp_min(_EPS)
 
 
 def accuracy_(mat: Tensor) -> Tensor:
     """CxC matrix to C-vector"""
-    return (mat.diag() / mat.sum(1).clamp(_EPS))
+    return (mat.diag() / mat.sum(1).clamp_min(_EPS))
 
 
 def specificity(mat: Tensor) -> Tensor:
@@ -86,7 +73,7 @@ def kappa(mat: Tensor) -> Tensor:
     """CxC matrix to scalar"""
     expected = mat.sum(0) @ mat.sum(1)
     observed = mat.trace()
-    return 1 - (1 - observed) / (1 - expected).clamp(_EPS)
+    return 1 - (1 - observed) / (1 - expected).clamp_min(_EPS)
 
 
 def kappa_quadratic_weighted(mat: Tensor) -> Tensor:
@@ -99,17 +86,17 @@ def kappa_quadratic_weighted(mat: Tensor) -> Tensor:
 
     expected = mat.sum(0) @ weights @ mat.sum(1)
     observed = mat.view(-1) @ weights.view(-1)
-    return 1 - observed / expected.clamp(_EPS)
+    return 1 - observed / expected.clamp_min(_EPS)
 
 
 def iou(mat: Tensor) -> Tensor:
     """CxC matrix to C-vector"""
-    return mat.diag() / (mat.sum(0) + mat.sum(1) - mat.diag()).clamp(_EPS)
+    return mat.diag() / (mat.sum(0) + mat.sum(1) - mat.diag()).clamp_min(_EPS)
 
 
 def dice_(mat: Tensor) -> Tensor:
     """CxC matrix to C-vector, full Dice score"""
-    return 2 * mat.diag() / (mat.sum(0) + mat.sum(1)).clamp(_EPS)
+    return 2 * mat.diag() / (mat.sum(0) + mat.sum(1)).clamp_min(_EPS)
 
 
 def dice(mat: Tensor) -> Tensor:

@@ -1,7 +1,4 @@
-__all__ = [
-    'Lambda', 'Metric', 'Scores', 'Staged', 'compose', 'to_index',
-    'to_index_sparse', 'to_prob', 'to_prob_sparse'
-]
+__all__ = ['Lambda', 'Metric', 'Scores', 'Staged', 'compose']
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Generator, Sequence
@@ -9,7 +6,6 @@ from dataclasses import dataclass, field
 from itertools import count
 from typing import Protocol, overload
 
-import torch
 from glow import coroutine
 from torch import Tensor
 
@@ -76,66 +72,6 @@ class Staged(Metric):
 
     def collect(self, state: Tensor) -> dict[str, Tensor]:
         return {key: fn(state) for key, fn in self.funcs.items()}
-
-
-def to_index(pred: Tensor, true: Tensor) -> tuple[int, Tensor, Tensor]:
-    """
-    Convert `pred` of logits with shape [B, C, ...] to [B, ...] of indices,
-    i.e. tensors of long.
-    """
-    assert pred.shape[0] == true.shape[0]
-    assert pred.shape[2:] == true.shape[1:]
-
-    c = pred.shape[1]
-    pred = pred.argmax(dim=1)
-
-    return c, pred, true
-
-
-def to_index_sparse(pred: Tensor, true: Tensor) -> tuple[int, Tensor, Tensor]:
-    """
-    Convert `pred` of logits with shape [B, C, ...] to [B, ...] of indices,
-    i.e. tensors of long. Drops bad indices.
-    Result is flattened.
-    """
-    c, pred, true = to_index(pred, true)
-
-    pred = pred.view(-1)
-    true = true.view(-1)
-
-    mask = (true >= 0) & (true < c)
-    return c, pred[mask], true[mask]
-
-
-def to_prob(pred: Tensor, true: Tensor) -> tuple[int, Tensor, Tensor]:
-    """
-    Convert `pred` of logits with shape [B, C, ...] to probs,
-    i.e. tensors of float32.
-    """
-    assert pred.shape[0] == true.shape[0]
-    assert pred.shape[2:] == true.shape[1:]
-    c = pred.shape[1]
-
-    with torch.autocast(pred.device.type, enabled=pred.dtype == torch.half):
-        pred = pred.softmax(dim=1)
-    return c, pred, true
-
-
-def to_prob_sparse(pred: Tensor, true: Tensor) -> tuple[int, Tensor, Tensor]:
-    """
-    Convert `pred` of logits with shape [B, C, ...] to probs,
-    i.e. tensors of float.
-    Drops bad indices, i.e. those that are out of range(C).
-    Results have shape of [N, C] and [N].
-    """
-    c, pred, true = to_prob(pred, true)
-
-    b = true.shape[0]
-    true = true.view(-1)  # (b n)
-    pred = pred.view(b, c, -1).permute(0, 2, 1).view(-1, c)  # (b n) c
-
-    mask = (true >= 0) & (true < c)
-    return c, pred[mask], true[mask]
 
 
 @coroutine

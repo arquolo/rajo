@@ -6,13 +6,13 @@ import pickle
 from collections.abc import Callable
 from functools import partial, update_wrapper
 from pathlib import Path
-from typing import Any, NamedTuple, Protocol, TypeVar, cast
+from typing import Any, NamedTuple, Protocol, TypeVar, cast, overload
 
 import torch
 import torch.cuda
 import torch.distributed as dist
 import torch.multiprocessing as tmp
-from torch import nn
+from torch import Tensor, nn
 
 # -------------------------------- primitives --------------------------------
 
@@ -34,15 +34,35 @@ def barrier(rank: int | None = None) -> None:
         dist.barrier()
 
 
-def reduce_if_needed(*tensors: torch.Tensor,
-                     mean: bool = False) -> tuple[torch.Tensor, ...]:
+@overload
+def reduce_if_needed(*values: int | float,
+                     mean: bool = ...) -> tuple[float, ...]:
+    ...
+
+
+@overload
+def reduce_if_needed(*values: Tensor, mean: bool = ...) -> tuple[Tensor, ...]:
+    ...
+
+
+def reduce_if_needed(*values: Tensor | float | int,
+                     mean: bool = False) -> tuple[Tensor | float, ...]:
     """Reduce tensors across all machines"""
     if (ddp := get_ddp_info()) and ddp.world > 1:
-        tensors = *(t.clone() for t in tensors),
+        device_id = torch.cuda.current_device()
+        device = torch.device(f'cuda:{device_id}')
+
+        pairs = [((v.clone(), False) if isinstance(v, Tensor) else
+                  (torch.tensor(v, device=device), True)) for v in values]
+        tensors: tuple[Tensor, ...]
+        unpack: tuple[bool, ...]
+        tensors, unpack = zip(*pairs)
+
         dist.all_reduce_multigpu(tensors)
         if mean:
             tensors = *(t / ddp.world for t in tensors),
-    return tensors
+        values = *(t.item() if u else t for t, u in zip(tensors, unpack)),
+    return values
 
 
 # --------------------------------- wrappers ---------------------------------
