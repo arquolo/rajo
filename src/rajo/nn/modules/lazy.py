@@ -8,7 +8,7 @@ import warnings
 from torch import Size, Tensor, nn
 from torch.nn.parameter import UninitializedBuffer, UninitializedParameter
 
-from .simple import Bias2d, BlurPool2d, Conv2dWs
+from .primitive import Bias2d, BlurPool2d, Conv2dWs
 
 warnings.filterwarnings('ignore', module='torch.nn.modules.lazy')
 

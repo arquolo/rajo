@@ -7,7 +7,7 @@ from typing import Literal
 from torch import nn
 
 from .lazy import LazyBlurPool2d
-from .simple import Decimate2d
+from .primitive import Decimate2d
 from .util import ActivationFn, LazyConvFn, LazyNormFn
 
 

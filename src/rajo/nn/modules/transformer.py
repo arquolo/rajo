@@ -17,7 +17,7 @@ from torch import Tensor, nn
 
 from .aggregates import pre_norm
 from .context import ConvCtx
-from .convnets import mbconv
+from .conv import mbconv
 from .util import round8
 
 _IS_TORCH_1_12 = Version('1.12') <= Version(torch.__version__) < Version('2.0')
