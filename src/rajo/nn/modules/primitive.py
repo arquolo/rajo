@@ -4,16 +4,14 @@ __all__ = [
 ]
 
 from collections.abc import Iterable
-from string import ascii_lowercase
 from typing import Final
 
-import cv2
-import numpy as np
 import torch
 import torch.nn.functional as TF
 from torch import Tensor, jit, nn
 
 from .. import functional as F
+from .. import ops
 from .util import to_buffers
 
 
@@ -138,19 +136,6 @@ class Conv2dWs(nn.Conv2d):
 # --------------------------------- blurpool ---------------------------------
 
 
-def _pascal_triangle(n: int) -> list[int]:
-    values = [1]
-    for _ in range(n - 1):
-        values = [a + b for a, b in zip([*values, 0], [0, *values])]
-    return values[:n]
-
-
-def _outer_mul(*ts: Tensor) -> Tensor:
-    assert all(t.ndim == 1 for t in ts)
-    letters = ascii_lowercase[:len(ts)]
-    return torch.einsum(','.join(letters) + ' -> ' + letters, *ts)
-
-
 class BlurPool2d(nn.Conv2d):
     def __init__(self,
                  dim: int,
@@ -162,35 +147,19 @@ class BlurPool2d(nn.Conv2d):
                          padding_mode)
         to_buffers(self, persistent=False)
 
+    @torch.no_grad()
     def reset_parameters(self) -> None:
         if not self.in_channels:
             return
 
-        weights = [
-            torch.as_tensor(_pascal_triangle(k)).float()
-            for k in self.kernel_size
-        ]
-        weight = _outer_mul(*weights)
+        weights = [ops.pascal_triangle(k).float() for k in self.kernel_size]
+        weight = F.outer_mul(*weights)
         weight /= weight.sum()
 
         self.weight.copy_(weight, non_blocking=True)
 
 
 # --------------------------------- laplace ----------------------------------
-
-
-def _laplace_kernel(ksize: int, normalize: bool = True) -> Tensor:
-    assert ksize % 2 == 1, 'kernel must be odd'
-    assert ksize <= 31, 'kernel must be not larger 31'
-
-    ek = max(3, ksize)
-    ep = ek // 2
-    im = np.zeros((2 * ek - 1, 2 * ek - 1), 'f4')
-    im[ek - 1, ek - 1] = 1
-
-    scale = ksize / (4 ** ksize) if normalize else 1
-    im = cv2.Laplacian(im, cv2.CV_32F, ksize=ksize, scale=scale)
-    return torch.as_tensor(im[ep:ep + ek, ep:ep + ek])
 
 
 class Laplace(nn.Conv2d):
@@ -205,15 +174,18 @@ class Laplace(nn.Conv2d):
         super().__init__(1, nk, kmax, padding=kmax // 2, bias=False)
         to_buffers(self, persistent=False)
 
+    @torch.no_grad()
     def reset_parameters(self) -> None:
+        kernels = [
+            ops.laplace_kernel(k, normalize=self.normalize)
+            for k in self.ksizes
+        ]
+        # Do center padding
         kmax = max(max(self.ksizes), 3)  # noqa: PLW3301
-        with torch.no_grad():
-            self.weight.zero_()
-        for k, sample in zip(self.ksizes, self.weight[:, 0, ...]):
-            w = _laplace_kernel(k, normalize=self.normalize)
-            p = (kmax - w.shape[0]) // 2
-            with torch.no_grad():
-                sample[p:kmax - p, p:kmax - p].copy_(w, non_blocking=True)
+        self.weight.zero_()
+        for w, dst in zip(kernels, self.weight[:, 0, ...]):
+            pad = (kmax - w.shape[0]) // 2
+            dst[pad:kmax - pad, pad:kmax - pad].copy_(w, non_blocking=True)
 
     def __repr__(self) -> str:
         nk = len(self.ksizes)
@@ -228,9 +200,7 @@ class RgbToGray(nn.Conv2d):
         super().__init__(3, 1, 1, bias=False)
         to_buffers(self, persistent=False)
 
+    @torch.no_grad()
     def reset_parameters(self) -> None:
-        w = np.eye(3, dtype='f4')[None, :, :]  # (1 3 3)
-        w = cv2.cvtColor(w, cv2.COLOR_RGB2GRAY)  # (1 3)
-        w = w[:, :, None, None]  # (1 3 1 1)
-        with torch.no_grad():
-            self.weight.copy_(torch.from_numpy(w), non_blocking=True)
+        w = ops.rgb2gray_kernel()[:, :, None, None]  # (1 3 1 1)
+        self.weight.copy_(w, non_blocking=True)

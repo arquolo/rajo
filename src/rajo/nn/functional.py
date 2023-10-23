@@ -1,5 +1,8 @@
-__all__ = ['conv2d_ws', 'upscale2d']
+__all__ = ['conv2d_ws', 'outer_mul', 'upscale2d']
 
+from string import ascii_lowercase
+
+import torch
 import torch.nn.functional as F
 from torch import Size, Tensor, nn
 from torch.nn.utils import parametrize
@@ -39,3 +42,10 @@ def standartize_conv_weights(model: nn.Module) -> None:
         shape = m.weight.shape
         parametrize.register_parametrization(
             m, 'weight', nn.LayerNorm(shape[1:], elementwise_affine=False))
+
+
+def outer_mul(*ts: Tensor) -> Tensor:
+    """Outer product of series of 1D-tensors"""
+    assert all(t.ndim == 1 for t in ts)
+    letters = ascii_lowercase[:len(ts)]
+    return torch.einsum(','.join(letters) + ' -> ' + letters, *ts)
