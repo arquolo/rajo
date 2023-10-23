@@ -1,4 +1,4 @@
-__all__ = ['conv2d_ws', 'outer_mul', 'upscale2d']
+__all__ = ['conv2d_ws', 'dice_loss', 'outer_mul', 'upscale2d']
 
 from string import ascii_lowercase
 
@@ -6,6 +6,11 @@ import torch
 import torch.nn.functional as F
 from torch import Size, Tensor, nn
 from torch.nn.utils import parametrize
+
+from rajo.metrics.confusion import dice
+from rajo.metrics.func import soft_confusion
+
+_EPS = torch.finfo(torch.float).eps
 
 _size = Size | list[int] | tuple[int, ...]
 
@@ -49,3 +54,23 @@ def outer_mul(*ts: Tensor) -> Tensor:
     assert all(t.ndim == 1 for t in ts)
     letters = ascii_lowercase[:len(ts)]
     return torch.einsum(','.join(letters) + ' -> ' + letters, *ts)
+
+
+def dice_loss(y_pred: Tensor,
+              y: Tensor,
+              /,
+              *,
+              full_size: bool = False,
+              log: bool = False) -> Tensor:
+    support, mat = soft_confusion(y_pred, y)
+
+    mat = mat / mat.sum().clamp_min(_EPS)
+    score = dice(mat)
+    loss = -score.clamp_min(_EPS).log().mean() if log else (1 - score.mean())
+
+    # 0 if empty
+    loss = torch.where(
+        loss.new_tensor(support > 0, dtype=torch.bool), loss,
+        torch.zeros_like(loss))
+
+    return (support * loss) if full_size else loss

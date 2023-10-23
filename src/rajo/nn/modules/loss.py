@@ -1,5 +1,6 @@
 __all__ = [
-    'BCEWithLogitsLoss', 'CrossEntropyLoss', 'LossWeighted', 'MultiheadLoss'
+    'BCEWithLogitsLoss', 'CrossEntropyLoss', 'DiceLoss', 'LossWeighted',
+    'MultiheadLoss'
 ]
 
 from collections.abc import Sequence
@@ -9,6 +10,8 @@ import torch
 from torch import Tensor, nn
 
 from rajo.distributed import reduce_if_needed
+
+from .. import functional as F
 
 
 class _Weighted(nn.Module):
@@ -184,3 +187,25 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
                                 support.new_zeros(support.shape))
 
         return scale * loss
+
+
+class DiceLoss(nn.Module):
+    full_size: Final[bool]
+    log: Final[bool]
+
+    def __init__(self, full_size: bool = False, log: bool = False):
+        super().__init__()
+        self.full_size = full_size
+        self.log = log
+
+    def extra_repr(self) -> str:
+        parts = []
+        if self.full_size:
+            parts += ['full_size=True']
+        if self.log:
+            parts += ['log=True']
+        return ', '.join(parts)
+
+    def forward(self, inputs: Tensor, targets: Tensor) -> Tensor:
+        return F.dice_loss(
+            inputs, targets, full_size=self.full_size, log=self.log)
