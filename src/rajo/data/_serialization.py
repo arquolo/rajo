@@ -1,14 +1,43 @@
-__all__ = ['SharedDict']
+__all__ = ['SharedDict', 'SharedList']
 
 import pickle
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from typing import TypeVar
 
 import numpy as np
 import torch
+from torch import Tensor
 
 _K = TypeVar('_K')
 _V = TypeVar('_V')
+_T = TypeVar('_T')
+
+
+class SharedList(Sequence[_T]):
+    """
+    Mapping that holds its values in shared memory via `torch.Tensor`.
+    """
+    __slots__ = ('_buf', '_addr')
+
+    def __init__(self, items: Iterable[_T]) -> None:
+        ts = [_serialize(x) for x in items]
+        self._buf = torch.cat(ts) if ts else torch.empty(0, dtype=torch.uint8)
+        self._addr = torch.as_tensor([0] + [len(t) for t in ts]).cumsum(0)
+
+    def __getitem__(self, idx: int) -> _T:
+        lo, hi = self._addr[idx:idx + 2].tolist()
+        return _deserialize(self._buf[lo:hi])
+
+    def __iter__(self) -> Iterator[_T]:
+        if not self:
+            return iter(())
+        return map(_deserialize, self._buf.tensor_split(self._addr[1:-1]))
+
+    def __len__(self) -> int:
+        return self._addr.shape[0] - 1
+
+    def __repr__(self) -> str:
+        return f'{type(self).__name__}(len={len(self)})'
 
 
 class SharedDict(Mapping[_K, _V]):
@@ -18,17 +47,12 @@ class SharedDict(Mapping[_K, _V]):
     __slots__ = ('_keys', '_buf', '_addr')
 
     def __init__(self, obj: Mapping[_K, _V]) -> None:
-        self._keys = {p: i for i, p in enumerate(obj)}
-
-        vs = [_serialize(v) for v in obj.values()]
-        self._buf = torch.from_numpy(np.concatenate([*vs]))
-        self._addr = torch.as_tensor([0] + [len(v) for v in vs]).cumsum(0)
+        self._keys = {k: i for i, k in enumerate(obj)}
+        self._list = SharedList(obj.values())
 
     def __getitem__(self, key: _K) -> _V:
         idx = self._keys[key]
-        lo, hi = self._addr[idx:idx + 2].tolist()
-        buf = memoryview(self._buf[lo:hi].numpy())
-        return pickle.loads(buf)
+        return self._list[idx]
 
     def __iter__(self) -> Iterator[_K]:
         return iter(self._keys)
@@ -36,7 +60,14 @@ class SharedDict(Mapping[_K, _V]):
     def __len__(self) -> int:
         return len(self._keys)
 
+    def __repr__(self) -> str:
+        return f'{type(self).__name__}(len={len(self)})'
 
-def _serialize(v) -> np.ndarray:
+
+def _serialize(v) -> Tensor:
     buf = pickle.dumps(v, protocol=-1)
-    return np.frombuffer(buf, dtype='u1')
+    return torch.from_numpy(np.frombuffer(buf, dtype='u1').copy())
+
+
+def _deserialize(x: Tensor):
+    return pickle.loads(memoryview(x.numpy()))

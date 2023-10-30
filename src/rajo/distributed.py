@@ -5,7 +5,6 @@ __all__ = [
 import pickle
 from collections.abc import Callable
 from functools import partial, update_wrapper
-from pathlib import Path
 from typing import Any, NamedTuple, Protocol, TypeVar, cast, overload
 
 import torch
@@ -13,6 +12,7 @@ import torch.cuda
 import torch.distributed as dist
 import torch.multiprocessing as tmp
 from torch import Tensor, nn
+from torch.multiprocessing.reductions import ForkingPickler
 
 # -------------------------------- primitives --------------------------------
 
@@ -25,7 +25,7 @@ class _DdpInfo(NamedTuple):
 def get_ddp_info() -> _DdpInfo | None:
     if not dist.is_initialized():
         return None
-    return _DdpInfo(dist.get_rank(), dist.get_world_size())
+    return _DdpInfo(dist.get_world_size(), dist.get_rank())
 
 
 def barrier(rank: int | None = None) -> None:
@@ -58,7 +58,10 @@ def reduce_if_needed(*values: Tensor | float | int,
         unpack: tuple[bool, ...]
         tensors, unpack = zip(*pairs)
 
-        dist.all_reduce_multigpu(tensors)
+        ops = [dist.all_reduce(t, async_op=True) for t in tensors]
+        for op in ops:
+            op.wait()  # type: ignore
+
         if mean:
             tensors = *(t / ddp.world for t in tensors),
         values = *(t.item() if u else t for t, u in zip(tensors, unpack)),
@@ -105,7 +108,7 @@ class _AutoDdp:
 
         # ! Not tested
         # * Actually, here we can use loky.ProcessPoolExecutor, like this:
-        # from . import map_n
+        # from glow import map_n
         # ngpus = self.ngpus
         # jobs = map_n(self._worker, range(ngpus), max_workers=ngpus, mp=True)
         # list(jobs)
@@ -137,29 +140,19 @@ def once_per_world(fn: _F) -> _F:
             # Master process, so no neighbors to share results with
             return fn(*args, **kwargs)
 
-        # Generate random fname and share it among whole world
-        idx = torch.empty((), dtype=torch.int64).random_()
-        if ddp.rank == 0:
-            dist.broadcast(idx, 0)
-
-        tmp = Path(f'/tmp/_ddp_share_{idx.item():x}.pkl')
-        result = None
-
         if ddp.rank == 0:  # 0th child
             result = fn(*args, **kwargs)
-            with tmp.open('wb') as fp:
-                pickle.dump(result, fp)
+            handles = [bytes(ForkingPickler.dumps(result))]
+        else:
+            result = None
+            handles = [None]
 
-        barrier()
+        # Send all from 0 to rest
+        dist.broadcast_object_list(handles, src=0)
 
-        if ddp.rank > 0:  # Gather results from 0th child
-            with tmp.open('rb') as fp:
-                result = pickle.load(fp)
-
-        barrier()
-
-        if ddp.rank == 0:  # 0th child
-            tmp.unlink()
+        if ddp.rank != 0:  # Rebuild from serialized
+            assert handles[0] is not None
+            result = pickle.loads(handles[0])
 
         return result
 
