@@ -7,7 +7,7 @@ only-packages = true
 
 [project]
 name = "rajo"
-version = "0.2.1"
+version = "0.2.2"
 description = "Pytorch training utilities and models"
 readme = "README.md"
 requires-python = ">=3.10"
