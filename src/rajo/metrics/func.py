@@ -12,10 +12,16 @@ from torch import Tensor
 
 from rajo.distributed import reduce_if_needed
 
+_EPS = torch.finfo(torch.float).eps
+
 # ---------------------------- prevalent classes -----------------------------
 
 
-def confusion(y_pred: Tensor, y: Tensor, /) -> Tensor:
+def confusion(y_pred: Tensor,
+              y: Tensor,
+              /,
+              *,
+              normalize: bool = False) -> Tensor:
     """
     CxC confusion matrix over prevalent classes.
 
@@ -28,7 +34,10 @@ def confusion(y_pred: Tensor, y: Tensor, /) -> Tensor:
     if not y.numel():
         return y.new_zeros(c, c)
 
-    return (y * c).add_(y_pred).bincount(minlength=c * c).view(c, c)
+    mat = (y * c).add_(y_pred).bincount(minlength=c * c).view(c, c)
+    if not normalize:
+        return mat
+    return mat.float() / mat.sum().clamp_min_(1)
 
 
 def class_ids(
@@ -87,7 +96,11 @@ def class_ids(
 # --------------------------- class probabilities ----------------------------
 
 
-def soft_confusion(y_pred: Tensor, y: Tensor, /) -> tuple[float, Tensor]:
+def soft_confusion(y_pred: Tensor,
+                   y: Tensor,
+                   /,
+                   *,
+                   normalize: bool = False) -> Tensor:
     """
     CxC confusion matrix over class probabilities. World-wise.
     Preserves gradient.
@@ -100,7 +113,7 @@ def soft_confusion(y_pred: Tensor, y: Tensor, /) -> tuple[float, Tensor]:
     - share of valid samples w.r.t. full batch;
     - CxC confusion matrix of floats.
     """
-    support, y_pred, y = class_probs(y_pred, y)
+    y_pred, y = class_probs(y_pred, y)
 
     assert y_pred.dtype == torch.float32
     if y_pred.ndim == 2:  # multiclass (N C)
@@ -113,10 +126,17 @@ def soft_confusion(y_pred: Tensor, y: Tensor, /) -> tuple[float, Tensor]:
         mat = torch.stack([neg, pos], 1)
 
     mat, = reduce_if_needed(mat)
-    return support, mat
+    if normalize:
+        mat = mat / mat.sum().clamp_min(_EPS)
+    return mat
 
 
-def roc_confusion(y_pred: Tensor, y: Tensor, /, *, bins: int = 64) -> Tensor:
+def roc_confusion(y_pred: Tensor,
+                  y: Tensor,
+                  /,
+                  *,
+                  bins: int = 64,
+                  normalize: bool = False) -> Tensor:
     """
     TxCxC confusion matrix over class probabilities computed
     for multiple thresholds. World-wise. Useful for AUROC, Youden J, AP.
@@ -125,7 +145,7 @@ def roc_confusion(y_pred: Tensor, y: Tensor, /, *, bins: int = 64) -> Tensor:
     - y_pred - `(B C *)` or `(B 1 *)` logits;
     - y - `(B *)` indices.
     """
-    _, y_pred, y = class_probs(y_pred, y)
+    y_pred, y = class_probs(y_pred, y)
 
     nt = bins + 1
     if not y.numel():
@@ -154,10 +174,13 @@ def roc_confusion(y_pred: Tensor, y: Tensor, /, *, bins: int = 64) -> Tensor:
 
     hist, fp_tp = reduce_if_needed(hist, fp_tp)
 
-    return torch.stack([hist - fp_tp, fp_tp], -1)  # (T 2 *2*)
+    mat = torch.stack([hist - fp_tp, fp_tp], -1)  # (T 2 *2*)
+    if not normalize:
+        return mat
+    return mat.float() / mat.sum((1, 2), keepdim=True)
 
 
-def class_probs(y_pred: Tensor, y: Tensor, /) -> tuple[float, Tensor, Tensor]:
+def class_probs(y_pred: Tensor, y: Tensor, /) -> tuple[Tensor, Tensor]:
     """
     Gets probabilities of predicted classes.
     Keeps only valid labels (i.e. those in `0...C-1` range)
@@ -194,11 +217,4 @@ def class_probs(y_pred: Tensor, y: Tensor, /) -> tuple[float, Tensor, Tensor]:
     m = (y >= 0) & (y < c)
     y_pred, y = y_pred[m], y[m]  # y_pred: [(m) c] or (m), y: (m)
 
-    sup: float = y.numel()
-    total: float = m.numel()
-    sup, total = reduce_if_needed(sup, total)
-
-    if total > 0:  # never do 0/0
-        sup = sup / total
-
-    return sup, y_pred, y
+    return y_pred, y

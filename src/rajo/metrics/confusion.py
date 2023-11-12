@@ -25,8 +25,7 @@ _EPS = torch.finfo(torch.float).eps
 class Confusion(Staged):
     """CxC confusion matrix"""
     def __call__(self, y_pred: Tensor, y: Tensor, /) -> Tensor:
-        mat = confusion(y_pred, y)
-        return mat.float() / mat.sum().clamp_min_(1)
+        return confusion(y_pred, y, normalize=True)
 
     def collect(self, mat: Tensor) -> dict[str, Tensor]:
         c = mat.shape[0]
@@ -36,8 +35,7 @@ class Confusion(Staged):
 class SoftConfusion(Confusion):
     """Confusion Matrix which can be used for loss functions"""
     def __call__(self, y_pred: Tensor, y: Tensor, /) -> Tensor:
-        _, mat = soft_confusion(y_pred, y)
-        return mat / mat.sum().clamp_min(_EPS)
+        return soft_confusion(y_pred, y, normalize=True)
 
 
 def accuracy(mat: Tensor) -> Tensor:

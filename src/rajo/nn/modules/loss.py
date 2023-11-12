@@ -4,7 +4,7 @@ __all__ = [
 ]
 
 from collections.abc import Sequence
-from typing import Final
+from typing import Final, Literal
 
 import torch
 from torch import Tensor, nn
@@ -15,7 +15,7 @@ from .. import functional as F
 
 
 class _Weighted(nn.Module):
-    weight: Tensor | None
+    gain: Tensor | None
     reduce: Final[bool]
 
     def __init__(self,
@@ -24,23 +24,25 @@ class _Weighted(nn.Module):
                  reduce: bool = True) -> None:
         super().__init__()
         if weight is not None:
-            if len(weight) == num:
-                weight = torch.as_tensor(weight, dtype=torch.float)
-                weight *= len(weight) / weight.sum()
-            else:
+            if len(weight) != num:
                 raise ValueError('each head should have weight')
+            gain = torch.as_tensor(weight, dtype=torch.float)
+            gain *= len(gain) / gain.sum()
+        else:
+            gain = None
 
-        self.register_buffer('weight', weight)
+        self.register_buffer('gain', gain)
         self.reduce = reduce
 
     def extra_repr(self) -> str:
-        if self.weight is None:
+        if self.gain is None:
             return ''
-        return f'weight={self.weight.cpu().numpy().round(3)}'
+        return f'gain={self.gain.cpu().numpy().round(3)}'
 
     def _to_output(self, tensors: list[Tensor]) -> list[Tensor] | Tensor:
-        if self.weight is not None:
-            tensors = [t * w for t, w in zip(tensors, self.weight.unbind())]
+        if self.gain is not None:
+            tensors = [t * w for t, w in zip(tensors, self.gain.unbind())]
+        tensors = [F.finite_or_zero(t) for t in tensors]
         if not self.reduce:
             return tensors
         return torch.stack(torch.broadcast_tensors(*tensors), -1).mean(-1)
@@ -52,12 +54,15 @@ class MultiheadLoss(_Weighted):
 
     Parameters:
     - head_dims: list of C1, ..., Cn
+    - if renorm is set, each head loss is scaled to its sample size
 
     Argument shapes:
     - outputs: `(B, C1 + ... + Cn, ...)`,
     - targets: `(B, N, ...)` or same as outputs
     """
     head_dims: Final[list[int]]
+    num_heads: Final[int]
+    renorm: Final[bool]
 
     def __init__(
         self,
@@ -65,16 +70,20 @@ class MultiheadLoss(_Weighted):
         head_dims: Sequence[int],
         weight: Sequence[float] | Tensor | None = None,
         reduce: bool = True,
+        renorm: bool | Literal['raw'] = False,
     ):
         super().__init__(len(head_dims), weight=weight, reduce=reduce)
         self.base_loss = base_loss
         self.head_dims = [*head_dims]
         self.num_heads = len(head_dims)
+        self.renorm = renorm
 
     def extra_repr(self) -> str:
         line = f'heads={self.head_dims}'
+        if self.renorm:
+            line = f'{line}, renorm={self.renorm}'
         if s := super().extra_repr():
-            line += f', {s}'
+            line = f'{line}, {s}'
         return line
 
     def forward(self, outputs: Tensor,
@@ -88,6 +97,17 @@ class MultiheadLoss(_Weighted):
             targets.split(self.head_dims, dim=1))
 
         tensors = [self.base_loss(o, t) for o, t in zip(o_parts, t_parts)]
+
+        if self.renorm:  # Scale each head to whole its size
+            sizes = [F.support(o, t) for o, t in zip(o_parts, t_parts)]
+            support = torch.stack(sizes)
+            support, = reduce_if_needed(support, mean=True)
+
+            if self.renorm != 'raw':  # Normalize to unit sum
+                support /= support.mean()
+
+            tensors = [w * t for w, t in zip(support.unbind(), tensors)]
+
         return self._to_output(tensors)
 
 
@@ -137,75 +157,50 @@ class BCEWithLogitsLoss(nn.BCEWithLogitsLoss):
 
 
 class CrossEntropyLoss(nn.CrossEntropyLoss):
-    """Scales crossentropy loss w.r.t total sample size.
-
-    `torch.nn.CrossEntropyLoss` scales loss by count of non-ignored samples,
-    and if there're 0 of them, returns NAN.
-    This one never returns NAN.
-
-    If `full_size` is set, all samples are treated equally,
-    and crossentropy is scaled by total sample size instead
-    of count of non-ignored samples.
-
-    If `full_size` is not set falls back to `torch.nn.CrossEntropyLoss` but
-    properly weights samples across whole world.
     """
-    full_size: Final[bool]
+    Drop-in replacement of `torch.nn.CrossEntropyLoss`.
 
+    - returns 0 for empty batch (original gives NaN);
+    - scales result to replica's sample size for even weight of samples
+      (forces sample balance for DDP used with `ignore_index`).
+
+    For global loss use `dist.all_reduce(loss, op=dist.ReduceOp.MEAN)`.
+    """
     def __init__(self,
                  weight: Tensor | None = None,
                  ignore_index: int = -100,
-                 label_smoothing: float = 0,
-                 full_size: bool = False) -> None:
+                 label_smoothing: float = 0) -> None:
         super().__init__(
             weight,
             ignore_index=ignore_index,
             reduction='mean',
             label_smoothing=label_smoothing)
-        self.full_size = full_size
-
-    def extra_repr(self) -> str:
-        return 'full_size=True' if self.full_size else ''
 
     def forward(self, outputs: Tensor, targets: Tensor) -> Tensor:
         loss = super().forward(outputs, targets)
 
-        # Don't NAN
-        # NOTE: support computed for local rank only to scale loss properly
-        num_classes = outputs.shape[1]
-        support = ((targets >= 0) &
-                   (targets < num_classes)).mean(dtype=outputs.dtype)
-        loss = torch.where(support > 0, loss, loss.new_zeros(loss.shape))
+        # NOTE: support is computed for current rank
+        support = F.support(outputs, targets)
+        total_support, = reduce_if_needed(support, mean=True)
+        if total_support is support:
+            return loss
 
-        if self.full_size:
-            # Scale to be crossentropy(y_pred, y).sum() / y.size
-            scale = support
-        else:
-            # Rescale to weight all samples equally across whole world
-            w_support, = reduce_if_needed(support, mean=True)
-            scale = torch.where(w_support > 0, support / w_support,
-                                support.new_zeros(support.shape))
-
-        return scale * loss
+        # Rescale loss to weight all samples equally across whole world
+        # Do not NAN on empty GT
+        loss = loss * (support / total_support)
+        return F.finite_or_zero(loss)
 
 
 class DiceLoss(nn.Module):
-    full_size: Final[bool]
+    """DDP-aware Dice loss. Returns same value on all replicas"""
     log: Final[bool]
 
-    def __init__(self, full_size: bool = False, log: bool = False):
+    def __init__(self, log: bool = False):
         super().__init__()
-        self.full_size = full_size
         self.log = log
 
     def extra_repr(self) -> str:
-        parts = []
-        if self.full_size:
-            parts += ['full_size=True']
-        if self.log:
-            parts += ['log=True']
-        return ', '.join(parts)
+        return 'log=True' if self.log else ''
 
     def forward(self, inputs: Tensor, targets: Tensor) -> Tensor:
-        return F.dice_loss(
-            inputs, targets, full_size=self.full_size, log=self.log)
+        return F.dice_loss(inputs, targets, log=self.log)

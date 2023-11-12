@@ -73,7 +73,7 @@ def _rankdata(ten: Tensor) -> Tensor:
 def _binary_metric(fn):
     """Applies specified function only on probabilities of indexed class"""
     def call(y_pred: Tensor, y: Tensor, /, *, index: int = 0) -> Tensor:
-        _, y_pred, y = class_probs(y_pred, y)
+        y_pred, y = class_probs(y_pred, y)
 
         yc_pred = ((y_pred if index == 1 else
                     (1 - y_pred)) if y_pred.ndim == 1 else y_pred[:, index])

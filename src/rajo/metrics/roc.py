@@ -26,10 +26,7 @@ class Confusion(Staged):
         self.normalize = normalize
 
     def __call__(self, y_pred: Tensor, y: Tensor, /) -> Tensor:
-        mat = roc_confusion(y_pred, y)  # (T 2 *2*)
-        if not self.normalize:
-            return mat
-        return mat.float() / mat.sum((1, 2), keepdim=True)
+        return roc_confusion(y_pred, y, normalize=self.normalize)  # (T 2 *2*)
 
     def collect(self, mat: Tensor) -> dict[str, Tensor]:
         return {'cm2t': mat, **super().collect(mat)}

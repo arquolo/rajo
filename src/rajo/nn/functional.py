@@ -1,4 +1,4 @@
-__all__ = ['conv2d_ws', 'dice_loss', 'outer_mul', 'upscale2d']
+__all__ = ['conv2d_ws', 'dice_loss', 'outer_mul', 'support', 'upscale2d']
 
 from string import ascii_lowercase
 
@@ -56,21 +56,21 @@ def outer_mul(*ts: Tensor) -> Tensor:
     return torch.einsum(','.join(letters) + ' -> ' + letters, *ts)
 
 
-def dice_loss(y_pred: Tensor,
-              y: Tensor,
-              /,
-              *,
-              full_size: bool = False,
-              log: bool = False) -> Tensor:
-    support, mat = soft_confusion(y_pred, y)
+def finite_or_zero(x: Tensor) -> Tensor:
+    return torch.where(x.isfinite(), x, x.new_zeros(x.shape))
 
-    mat = mat / mat.sum().clamp_min(_EPS)
+
+def dice_loss(y_pred: Tensor, y: Tensor, /, *, log: bool = False) -> Tensor:
+    mat = soft_confusion(y_pred, y, normalize=True)
     score = dice(mat)
-    loss = -score.clamp_min(_EPS).log().mean() if log else (1 - score.mean())
+    return -score.clamp_min(_EPS).log().mean() if log else (1 - score.mean())
 
-    # 0 if empty
-    loss = torch.where(
-        loss.new_tensor(support > 0, dtype=torch.bool), loss,
-        torch.zeros_like(loss))
 
-    return (support * loss) if full_size else loss
+def support(y_pred: Tensor, y: Tensor, /) -> Tensor:
+    if y_pred.ndim == y.ndim:
+        y = y.squeeze(1)
+    assert y_pred.shape[0] == y.shape[0], (y_pred.shape, y.shape)
+    assert y_pred.shape[2:] == y.shape[1:], (y_pred.shape, y.shape)
+
+    num_classes = y_pred.shape[1]
+    return ((y >= 0) & (y < num_classes)).mean(dtype=y_pred.dtype)
