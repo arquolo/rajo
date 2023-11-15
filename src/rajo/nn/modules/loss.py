@@ -9,7 +9,7 @@ from typing import Final, Literal
 import torch
 from torch import Tensor, nn
 
-from rajo.distributed import reduce_if_needed
+from rajo.distributed import all_reduce
 
 from .. import functional as F
 
@@ -62,7 +62,7 @@ class MultiheadLoss(_Weighted):
     """
     head_dims: Final[list[int]]
     num_heads: Final[int]
-    renorm: Final[bool]
+    renorm: Final[bool | Literal['raw']]
 
     def __init__(
         self,
@@ -101,7 +101,7 @@ class MultiheadLoss(_Weighted):
         if self.renorm:  # Scale each head to whole its size
             sizes = [F.support(o, t) for o, t in zip(o_parts, t_parts)]
             support = torch.stack(sizes)
-            support, = reduce_if_needed(support, mean=True)
+            support, = all_reduce(support, mean=True)
 
             if self.renorm != 'raw':  # Normalize to unit sum
                 support /= support.mean()
@@ -181,7 +181,7 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
 
         # NOTE: support is computed for current rank
         support = F.support(outputs, targets)
-        total_support, = reduce_if_needed(support, mean=True)
+        total_support, = all_reduce(support, mean=True)
         if total_support is support:
             return loss
 

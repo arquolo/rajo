@@ -2,7 +2,7 @@ __all__ = ['SharedDict', 'SharedList']
 
 import pickle
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from typing import TypeVar
+from typing import TypeVar, overload
 
 import numpy as np
 import torch
@@ -24,8 +24,23 @@ class SharedList(Sequence[_T]):
         self._buf = torch.cat(ts) if ts else torch.empty(0, dtype=torch.uint8)
         self._addr = torch.as_tensor([0] + [len(t) for t in ts]).cumsum(0)
 
-    def __getitem__(self, idx: int) -> _T:
-        lo, hi = self._addr[idx:idx + 2].tolist()
+    @overload
+    def __getitem__(self, index: int, /) -> _T:
+        ...
+
+    @overload
+    def __getitem__(self, index: slice, /) -> list[_T]:
+        ...
+
+    def __getitem__(self, index: int | slice, /) -> _T | list[_T]:
+        len_ = len(self)
+        if isinstance(index, slice):
+            return [self[i] for i in range(len_)[index]]
+
+        if not -len_ <= index < len_:
+            raise IndexError(f'{type(self).__name__} index out of range')
+        index %= len_
+        lo, hi = self._addr[index:index + 2].tolist()
         return _deserialize(self._buf[lo:hi])
 
     def __iter__(self) -> Iterator[_T]:

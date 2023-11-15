@@ -1,11 +1,14 @@
 __all__ = [
-    'auto_ddp', 'auto_model', 'barrier', 'get_ddp_info', 'reduce_if_needed'
+    'all_reduce', 'auto_ddp', 'auto_model', 'barrier', 'broadcast_call',
+    'get_ddp_info', 'once_per_world', 'reduce_if_needed'
 ]
 
 import pickle
+import warnings
 from collections.abc import Callable
 from functools import partial, update_wrapper
-from typing import Any, NamedTuple, Protocol, TypeVar, cast, overload
+from typing import (TYPE_CHECKING, Any, Concatenate, Literal, NamedTuple,
+                    ParamSpec, TypeVar, overload)
 
 import torch
 import torch.cuda
@@ -13,6 +16,11 @@ import torch.distributed as dist
 import torch.multiprocessing as tmp
 from torch import Tensor, nn
 from torch.multiprocessing.reductions import ForkingPickler
+
+_P = ParamSpec('_P')
+_R = TypeVar('_R')
+_Number = TypeVar('_Number', int, float)
+_TrainFn = Callable[Concatenate[nn.Module, _P], Any]
 
 # -------------------------------- primitives --------------------------------
 
@@ -35,18 +43,23 @@ def barrier(rank: int | None = None) -> None:
 
 
 @overload
-def reduce_if_needed(*values: int | float,
-                     mean: bool = ...) -> tuple[float, ...]:
+def all_reduce(*values: _Number,
+               mean: Literal[False] = ...) -> tuple[_Number, ...]:
     ...
 
 
 @overload
-def reduce_if_needed(*values: Tensor, mean: bool = ...) -> tuple[Tensor, ...]:
+def all_reduce(*values: int | float, mean: bool) -> tuple[float, ...]:
     ...
 
 
-def reduce_if_needed(*values: Tensor | float | int,
-                     mean: bool = False) -> tuple[Tensor | float, ...]:
+@overload
+def all_reduce(*values: Tensor, mean: bool = ...) -> tuple[Tensor, ...]:
+    ...
+
+
+def all_reduce(*values: Tensor | float | int,
+               mean: bool = False) -> tuple[Tensor | float | int, ...]:
     """Reduce tensors across all machines"""
     if (ddp := get_ddp_info()) and ddp.world > 1:
         device_id = torch.cuda.current_device()
@@ -85,15 +98,6 @@ def auto_model(net: nn.Module, sync_bn: bool = True) -> nn.Module:
             if torch.cuda.device_count() > 1 else net)
 
 
-class _TrainFn(Protocol):
-    def __call__(self, __net: nn.Module, *args, **kwargs) -> Any:
-        ...
-
-
-_F = TypeVar('_F', bound=Callable)
-_TrainFnType = TypeVar('_TrainFnType', bound=_TrainFn)
-
-
 class _AutoDdp:
     def __init__(self, train_fn: _TrainFn, net: nn.Module, *args, **kwargs):
         self.train_fn = train_fn
@@ -119,41 +123,68 @@ class _AutoDdp:
         if rank is None:
             return self.train_fn(self.net, *self.args, **self.kwargs)
 
-        dist.init_process_group(
-            backend='nccl', rank=rank, world_size=self.ngpus)
+        dist.init_process_group('nccl', world_size=self.ngpus, rank=rank)
         try:
             self.train_fn(auto_model(self.net), *self.args, **self.kwargs)
         finally:
             dist.destroy_process_group()
 
 
-def auto_ddp(train_fn: _TrainFnType) -> _TrainFnType:
-    return cast(_TrainFnType,
-                update_wrapper(partial(_AutoDdp, train_fn), train_fn))
+def auto_ddp(
+    train_fn: Callable[Concatenate[nn.Module, _P], Any]
+) -> Callable[Concatenate[nn.Module, _P], Any]:
+    return update_wrapper(partial(_AutoDdp, train_fn), train_fn)
 
 
-def once_per_world(fn: _F) -> _F:
-    """Call function only in rank=0 process, and share result for others"""
-    def wrapper(*args, **kwargs):
+def broadcast_call(fn: Callable[_P, _R], /) -> Callable[_P, _R]:
+    """
+    Callable will be called in single process,
+    and its result will be broadcasted to all the neighbours.
+    """
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
         ddp = get_ddp_info()
         if not ddp or ddp.world == 1:
             # Master process, so no neighbors to share results with
             return fn(*args, **kwargs)
 
-        if ddp.rank == 0:  # 0th child
+        if ddp.rank == 0:  # Call and broadcast result to all neighbours
             result = fn(*args, **kwargs)
             handles = [bytes(ForkingPickler.dumps(result))]
-        else:
-            result = None
-            handles = [None]
+            dist.broadcast_object_list(handles, src=0)
 
-        # Send all from 0 to rest
-        dist.broadcast_object_list(handles, src=0)
+        else:  # Gather result from #0
+            handles = [b'']
+            dist.broadcast_object_list(handles, src=0)
 
-        if ddp.rank != 0:  # Rebuild from serialized
-            assert handles[0] is not None
+            assert handles[0], \
+                '"torch.distributed.broadcast_object_list" failed'
             result = pickle.loads(handles[0])
 
         return result
 
-    return cast(_F, update_wrapper(wrapper, fn))
+    return update_wrapper(wrapper, fn)
+
+
+# -------------------------------- 0.2.x API ---------------------------------
+# TODO: remove in 0.3.x release
+
+if TYPE_CHECKING:
+    reduce_if_needed = all_reduce
+    once_per_world = broadcast_call
+
+_deprecations = {
+    'reduce_if_needed': ('all_reduce', all_reduce),
+    'once_per_world': ('broadcast_call', broadcast_call),
+}
+
+
+def __getattr__(name: str):
+    if new := _deprecations.get(name):
+        new_name, new_attr = new
+        warnings.warn(
+            f'"rajo.distributed.{name}" is deprecated. '
+            f'Use "rajo.distributed.{new_name}" instead',
+            category=DeprecationWarning,
+            stacklevel=2)
+        return new_attr
+    raise AttributeError

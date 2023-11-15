@@ -10,7 +10,7 @@ import torch
 from einops import rearrange
 from torch import Tensor
 
-from rajo.distributed import reduce_if_needed
+from rajo.distributed import all_reduce
 
 _EPS = torch.finfo(torch.float).eps
 
@@ -125,7 +125,7 @@ def soft_confusion(y_pred: Tensor,
         neg = y.bincount(minlength=2).float() - pos
         mat = torch.stack([neg, pos], 1)
 
-    mat, = reduce_if_needed(mat)
+    mat, = all_reduce(mat)
     if normalize:
         mat = mat / mat.sum().clamp_min(_EPS)
     return mat
@@ -172,7 +172,7 @@ def roc_confusion(y_pred: Tensor,
     fp_tp[0] = hist
     fp_tp[-1] = 0
 
-    hist, fp_tp = reduce_if_needed(hist, fp_tp)
+    hist, fp_tp = all_reduce(hist, fp_tp)
 
     mat = torch.stack([hist - fp_tp, fp_tp], -1)  # (T 2 *2*)
     if not normalize:
