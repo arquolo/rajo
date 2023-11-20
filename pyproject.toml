@@ -7,7 +7,7 @@ only-packages = true
 
 [project]
 name = "rajo"
-version = "0.2.2"
+version = "0.2.3"
 description = "Pytorch training utilities and models"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -54,16 +54,16 @@ trt = [
     # -f https://github.com/NVIDIA/Torch-TensorRT/releases
 ]
 dev-core = [
-    "flake8~=6.0.0",
+    "flake8~=6.1",
     "flake8-pie",
     "flake8-pyi",
     "flake8-pyproject",
     "flake8-simplify",
     "isort",
-    "mypy~=1.1.1",
-    "pytest~=6.0",
-    "ruff~=0.0.269",
-    "yapf==0.40.2",
+    "mypy~=1.7",
+    "pytest~=7.4",
+    "ruff~=0.1.6",
+    "yapf~=0.40.2",
 ]
 dev = [
     "rajo[dev-core]",
