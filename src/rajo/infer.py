@@ -16,8 +16,8 @@ class Indexer:
 
     def label_indices(
         self,
-        scores: npt.NDArray[np.floating],
-    ) -> npt.NDArray[np.int32]:
+        scores: npt.NDArray[np.number],
+    ) -> npt.NDArray[np.int64]:
         """Get index (*) of most probable class from class scores (* C)."""
         return scores.argmax(-1)
 
@@ -61,11 +61,11 @@ class MultiheadIndexer(Indexer):
 
     def label_indices(
         self,
-        scores: npt.NDArray[np.floating],
-    ) -> npt.NDArray[np.int32]:
+        scores: npt.NDArray[np.number],
+    ) -> npt.NDArray[np.int64]:
         """Get index (*) of most probable class from class scores (* C)."""
         assert scores.shape[-1] == self._total, \
             f'Expected {self._total} channels, got {scores.shape[-1]}'
 
         multi = [h.argmax(-1) for h in np.split(scores, self._splits, axis=-1)]
-        return np.ravel_multi_index(multi, self._heads)
+        return np.ravel_multi_index(multi, self._heads)  # type: ignore
