@@ -339,6 +339,8 @@ class RAdam(SingleGroupOptimizer):
 
         elif self.decay_to_sgd:
             _foreach.add_(params, avg, alpha=-step_size)
+            # denom = _foreach.ones(avg_sq)
+            # _foreach.addcdiv_(params, avg, denom, value=-step_size)
 
 
 @dataclass
