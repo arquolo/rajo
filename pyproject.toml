@@ -30,7 +30,7 @@ classifiers = [
 ]
 dependencies = [
     "packaging",
-    "glow~=0.13.0",
+    "glow~=0.13.6",
     "numpy~=1.21",
     "scipy",
     "opencv-python-headless~=4.0",
