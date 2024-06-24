@@ -30,8 +30,8 @@ classifiers = [
 ]
 dependencies = [
     "packaging",
-    "glow~=0.13.6",
-    "numpy~=1.21",
+    "glow~=0.13.8",
+    "numpy >=1.21, <3",
     "scipy",
     "opencv-python-headless~=4.0",
     "einops",
@@ -60,9 +60,9 @@ dev-core = [
     "flake8-pyproject",
     "flake8-simplify",
     "isort",
-    "mypy~=1.7",
+    "mypy~=1.11",
     "pytest~=8.0",
-    "ruff~=0.2.2",
+    "ruff~=0.6.8",
     "yapf~=0.40.2",
 ]
 dev = [
@@ -70,7 +70,6 @@ dev = [
     "flake8-alphabetize",
     # "flake8-class-attributes-order",
     # "flake8-newspaper-style",
-    "typing-extensions~=4.4",
 ]
 dev-wemake = [
     "rajo[dev-core]",
@@ -89,6 +88,7 @@ select = [
     "BLE", "COM", "ICN", "INP", "PL", "RSE", "RUF",
     # "FBT", "SLF", "TCH",
     "TRY",
+    "NPY201",
 ]
 ignore = [
     "A003", "B008", "B905", "D1", "D2", "D4", "N812", "S1", "S3",
@@ -140,7 +140,6 @@ max-complexity = 10
 sqlite_cache = true
 check_untyped_defs = true
 ignore_missing_imports = true
-ignore_missing_imports_per_module = true
 no_implicit_optional = true
 show_error_codes = true
 warn_unused_ignores = true

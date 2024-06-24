@@ -3,6 +3,7 @@ __all__ = ['laplace_kernel', 'pascal_triangle', 'rgb2gray_kernel']
 import cv2
 import numpy as np
 import torch
+from glow import pascal
 from torch import Tensor
 
 
@@ -41,7 +42,4 @@ def rgb2gray_kernel() -> Tensor:
 
 
 def pascal_triangle(n: int) -> Tensor:
-    values = [1]
-    for _ in range(n - 1):
-        values = [a + b for a, b in zip([*values, 0], [0, *values])]
-    return torch.as_tensor(values[:n])
+    return torch.from_numpy(pascal(n))

@@ -23,10 +23,11 @@ class Transform(Protocol):
         if prob == 1:
             return self
 
-        if isinstance(self, _Maybe):
-            prob *= self.prob
-            self = self.func
-        return _Maybe(self, prob)
+        r = self
+        if isinstance(r, _Maybe):
+            prob *= r.prob
+            r = r.func
+        return _Maybe(r, prob)
 
     def __rmul__(self, prob: float) -> 'Transform':
         return self * prob
