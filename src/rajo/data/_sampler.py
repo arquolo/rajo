@@ -2,7 +2,7 @@ __all__ = ['DdpSampler']
 
 from collections.abc import Iterator, Sized
 from itertools import chain, cycle, islice
-from typing import Generic, Protocol, TypeVar
+from typing import Protocol
 
 import torch
 from torch.utils.data import (RandomSampler, Sampler, SequentialSampler,
@@ -10,7 +10,6 @@ from torch.utils.data import (RandomSampler, Sampler, SequentialSampler,
 
 from ..distributed import get_ddp_info
 
-_T_co = TypeVar('_T_co', covariant=True)
 _TORCH_SAMPLERS = (RandomSampler, SubsetRandomSampler, WeightedRandomSampler)
 
 # If we need resume-like reproducibility, then .step() if necessary
@@ -31,17 +30,17 @@ def generate_seed() -> int:
     return int(torch.empty((), dtype=torch.int64).random_().item())
 
 
-class SamplerLike(Protocol, Generic[_T_co]):
-    def __iter__(self) -> Iterator[_T_co]:
+class SamplerLike[T](Protocol):
+    def __iter__(self) -> Iterator[T]:
         ...
 
     def __len__(self) -> int:
         ...
 
 
-class DdpSampler(Sampler[_T_co]):
+class DdpSampler[T](Sampler[T]):
     def __init__(self,
-                 sampler: Sampler[_T_co] | SamplerLike[_T_co],
+                 sampler: Sampler[T] | SamplerLike[T],
                  drop_last: bool = False) -> None:
         assert isinstance(sampler, Sized)
         self.base = sampler
@@ -66,7 +65,7 @@ class DdpSampler(Sampler[_T_co]):
         elif not isinstance(self.base, SequentialSampler):
             torch.manual_seed(self.seed)
 
-    def __iter__(self) -> Iterator[_T_co]:
+    def __iter__(self) -> Iterator[T]:
         self.step()
 
         if ddp := get_ddp_info():

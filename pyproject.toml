@@ -10,7 +10,7 @@ name = "rajo"
 version = "0.2.6"
 description = "Pytorch training utilities and models"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = {file = "LICENSE"}
 keywords = []
 authors = [
@@ -24,20 +24,18 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
     "packaging",
-    "glow~=0.13.8",
+    "glow~=0.14.0",
     "numpy >=1.21, <3",
     "scipy",
     "opencv-python-headless~=4.0",
     "einops",
     "pynvml~=11.4",
-    "torch~=2.0",
-    "torchvision~=0.15",
+    "torch~=2.4",
+    "torchvision~=0.19",
     "tqdm",
 ]
 
@@ -48,11 +46,7 @@ homepage = "https://github.com/arquolo/rajo"
 graph = ["graphviz"]
 dither = ["numba"]
 all = ["rajo[graph]", "matplotlib"]
-trt = [
-    # TODO: upd for torch 2.x
-    "torch-tensorrt~=1.3; platform_system=='Linux'",
-    # -f https://github.com/NVIDIA/Torch-TensorRT/releases
-]
+trt = ["torch-tensorrt"]
 dev-core = [
     "flake8~=7.0",
     "flake8-pie",
@@ -80,7 +74,7 @@ dev-wemake = [
 
 [tool.ruff]
 line-length = 79
-target-version = "py310"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [

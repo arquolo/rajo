@@ -12,14 +12,14 @@ from torch.utils.checkpoint import checkpoint
 from .lazy import LazyLayerNorm
 from .util import LazyNormFn
 
-_EnsembleMode = Literal['cat', 'sum', 'mean']
+type _EnsembleMode = Literal['cat', 'sum', 'mean']
 
 
 class Ensemble(nn.ModuleList):
     mode: Final[_EnsembleMode]
 
     def __init__(self, *branches: nn.Module | Iterable[nn.Module],
-                 mode: _EnsembleMode):
+                 mode: _EnsembleMode) -> None:
         modules = (
             b if isinstance(b, nn.Module) else nn.Sequential(*b)
             for b in branches)
