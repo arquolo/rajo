@@ -7,20 +7,16 @@ import pickle
 import warnings
 from collections.abc import Callable
 from functools import partial, update_wrapper
-from typing import (TYPE_CHECKING, Any, Concatenate, Literal, NamedTuple,
-                    ParamSpec, TypeVar, overload)
+from multiprocessing.reduction import ForkingPickler
+from typing import TYPE_CHECKING, Any, Concatenate, NamedTuple
 
 import torch
 import torch.cuda
 import torch.distributed as dist
-import torch.multiprocessing as tmp
 from torch import Tensor, nn
-from torch.multiprocessing.reductions import ForkingPickler
+from torch.multiprocessing.spawn import start_processes
 
-_P = ParamSpec('_P')
-_R = TypeVar('_R')
-_Number = TypeVar('_Number', int, float)
-_TrainFn = Callable[Concatenate[nn.Module, _P], Any]
+type _TrainFn[**P] = Callable[Concatenate[nn.Module, P], Any]
 
 # -------------------------------- primitives --------------------------------
 
@@ -42,43 +38,18 @@ def barrier(rank: int | None = None) -> None:
         dist.barrier()
 
 
-@overload
-def all_reduce(*values: _Number,
-               mean: Literal[False] = ...) -> tuple[_Number, ...]:
-    ...
-
-
-@overload
-def all_reduce(*values: int | float, mean: bool) -> tuple[float, ...]:
-    ...
-
-
-@overload
-def all_reduce(*values: Tensor, mean: bool = ...) -> tuple[Tensor, ...]:
-    ...
-
-
-def all_reduce(*values: Tensor | float | int,
-               mean: bool = False) -> tuple[Tensor | float | int, ...]:
+def all_reduce(*tensors: Tensor, mean: bool = False) -> tuple[Tensor, ...]:
     """Reduce tensors across all machines"""
     if (ddp := get_ddp_info()) and ddp.world > 1:
-        device_id = torch.cuda.current_device()
-        device = torch.device(f'cuda:{device_id}')
-
-        pairs = [((v.clone(), False) if isinstance(v, Tensor) else
-                  (torch.tensor(v, device=device), True)) for v in values]
-        tensors: tuple[Tensor, ...]
-        unpack: tuple[bool, ...]
-        tensors, unpack = zip(*pairs)
+        tensors = *(t.clone() for t in tensors),
 
         ops = [dist.all_reduce(t, async_op=True) for t in tensors]
         for op in ops:
-            op.wait()  # type: ignore
+            op.wait()
 
         if mean:
             tensors = *(t / ddp.world for t in tensors),
-        values = *(t.item() if u else t for t, u in zip(tensors, unpack)),
-    return values
+    return tensors
 
 
 # --------------------------------- wrappers ---------------------------------
@@ -98,8 +69,14 @@ def auto_model(net: nn.Module, sync_bn: bool = True) -> nn.Module:
             if torch.cuda.device_count() > 1 else net)
 
 
-class _AutoDdp:
-    def __init__(self, train_fn: _TrainFn, net: nn.Module, *args, **kwargs):
+class _AutoDdp[**P]:
+    def __init__(
+        self,
+        train_fn: _TrainFn[P],
+        net: nn.Module,
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> None:
         self.train_fn = train_fn
         self.net = net
         self.args = args
@@ -117,7 +94,7 @@ class _AutoDdp:
         # jobs = map_n(self._worker, range(ngpus), max_workers=ngpus, mp=True)
         # list(jobs)
         # * Left as safe measure
-        tmp.spawn(self._worker, nprocs=self.ngpus)
+        start_processes(self._worker, nprocs=self.ngpus)
 
     def _worker(self, rank: int | None) -> None:
         if rank is None:
@@ -130,18 +107,16 @@ class _AutoDdp:
             dist.destroy_process_group()
 
 
-def auto_ddp(
-    train_fn: Callable[Concatenate[nn.Module, _P], Any]
-) -> Callable[Concatenate[nn.Module, _P], Any]:
+def auto_ddp[**P](train_fn: _TrainFn[P]) -> _TrainFn[P]:
     return update_wrapper(partial(_AutoDdp, train_fn), train_fn)
 
 
-def broadcast_call(fn: Callable[_P, _R], /) -> Callable[_P, _R]:
+def broadcast_call[**P, R](fn: Callable[P, R], /) -> Callable[P, R]:
     """
     Callable will be called in single process,
     and its result will be broadcasted to all the neighbours.
     """
-    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         ddp = get_ddp_info()
         if not ddp or ddp.world == 1:
             # Master process, so no neighbors to share results with

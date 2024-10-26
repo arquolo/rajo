@@ -56,7 +56,7 @@ class ConvCtx:
         return (total_padding // 2) * dilation
 
     def _invert(self) -> 'ConvCtx':
-        return replace(self, parity=1 - self.parity)
+        return replace(self, parity=(1, 0)[self.parity])
 
     def conv(self,
              dim: int,

@@ -3,17 +3,14 @@ __all__ = [
     'LazyLayerNorm'
 ]
 
-import warnings
-
 from torch import Size, Tensor, nn
+from torch.nn.modules import lazy
 from torch.nn.parameter import UninitializedBuffer, UninitializedParameter
 
 from .primitive import Bias2d, BlurPool2d, Conv2dWs
 
-warnings.filterwarnings('ignore', module='torch.nn.modules.lazy')
 
-
-def _materialize_cls(m: nn.modules.lazy._LazyProtocol):
+def _materialize_cls(m: lazy._LazyProtocol) -> None:
     # Fixes incomplete implementation of LazyModuleMixin._lazy_load_hook
 
     # Does the same as LazyModuleMixin._infer_parameters does,
@@ -27,7 +24,7 @@ def _materialize_cls(m: nn.modules.lazy._LazyProtocol):
     # This function cancels this requirement.
 
     # FIXME: When merged to an upstream, do nothing
-    assert isinstance(m, nn.modules.lazy.LazyModuleMixin)
+    assert isinstance(m, lazy.LazyModuleMixin)
 
     m._initialize_hook.remove()
     m._load_hook.remove()
@@ -37,8 +34,8 @@ def _materialize_cls(m: nn.modules.lazy._LazyProtocol):
         m.__class__ = m.cls_to_become
 
 
-class _LazyModuleMixinV2(nn.modules.lazy.LazyModuleMixin):
-    def _lazy_load_hook(self: nn.modules.lazy._LazyProtocol, *args, **kwargs):
+class _LazyModuleMixinV2(lazy.LazyModuleMixin):
+    def _lazy_load_hook(self: lazy._LazyProtocol, *args, **kwargs) -> None:
         super()._lazy_load_hook(*args, **kwargs)
 
         if not self.has_uninitialized_params():  # type: ignore
@@ -60,7 +57,7 @@ class _LazyBase(_LazyModuleMixinV2):
 
 
 class LazyLayerNorm(_LazyBase, nn.LayerNorm):
-    cls_to_become = nn.LayerNorm  # type: ignore
+    cls_to_become = nn.LayerNorm
 
     weight: UninitializedParameter  # type: ignore
     bias: UninitializedParameter  # type: ignore
@@ -68,7 +65,7 @@ class LazyLayerNorm(_LazyBase, nn.LayerNorm):
     def __init__(self,
                  rank: int = 1,
                  eps: float = 1e-5,
-                 elementwise_affine: bool = True):
+                 elementwise_affine: bool = True) -> None:
         super().__init__([0] * rank, eps, False)
         self.elementwise_affine = elementwise_affine
         if self.elementwise_affine:
@@ -84,7 +81,7 @@ class LazyLayerNorm(_LazyBase, nn.LayerNorm):
 
 
 class LazyGroupNorm(_LazyBase, nn.GroupNorm):
-    cls_to_become = nn.GroupNorm  # type: ignore
+    cls_to_become = nn.GroupNorm
 
     weight: UninitializedParameter  # type: ignore
     bias: UninitializedParameter  # type: ignore
@@ -92,7 +89,7 @@ class LazyGroupNorm(_LazyBase, nn.GroupNorm):
     def __init__(self,
                  num_groups: int,
                  eps: float = 1e-5,
-                 affine: bool = True):
+                 affine: bool = True) -> None:
         super().__init__(num_groups, 0, eps, False)
         self.affine = affine
         if self.affine:
@@ -107,11 +104,11 @@ class LazyGroupNorm(_LazyBase, nn.GroupNorm):
 
 
 class LazyConv2dWs(nn.LazyConv2d):
-    cls_to_become = Conv2dWs  # type: ignore
+    cls_to_become = Conv2dWs
 
 
 class LazyBlurPool2d(_LazyBase, BlurPool2d):
-    cls_to_become = BlurPool2d  # type: ignore
+    cls_to_become = BlurPool2d
 
     weight: UninitializedBuffer
 
@@ -119,7 +116,7 @@ class LazyBlurPool2d(_LazyBase, BlurPool2d):
                  kernel: int = 4,
                  stride: int = 2,
                  padding: int = 1,
-                 padding_mode: str = 'reflect'):
+                 padding_mode: str = 'reflect') -> None:
         super().__init__(0, kernel, stride, padding, padding_mode)
         self.weight = UninitializedBuffer()
 
@@ -129,11 +126,11 @@ class LazyBlurPool2d(_LazyBase, BlurPool2d):
 
 
 class LazyBias2d(_LazyBase, Bias2d):
-    cls_to_become = Bias2d  # type: ignore
+    cls_to_become = Bias2d
 
     bias: UninitializedParameter  # type: ignore
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(0, 0, 0)
         self.bias = UninitializedParameter()
 

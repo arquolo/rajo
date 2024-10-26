@@ -1,14 +1,12 @@
 __all__ = ['ActivationFn', 'LazyConvFn', 'LazyNormFn', 'round8', 'to_buffers']
 
 from functools import partial
-from typing import Protocol, TypeVar
+from typing import Protocol
 
 from torch import nn
 
-_T = TypeVar('_T')
 
-
-def pair(t: _T | tuple[_T, ...]) -> tuple[_T, ...]:
+def pair[T](t: T | tuple[T, ...]) -> tuple[T, ...]:
     return t if isinstance(t, tuple) else (t, t)
 
 

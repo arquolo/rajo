@@ -6,20 +6,17 @@ __all__ = [
 import functools
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
-from io import BytesIO
 from itertools import islice
-from typing import Any, TypeVar, cast
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
 from glow import si
 from torch import Tensor, nn
 
-_T = TypeVar('_T')
-_F = TypeVar('_F', bound=Callable[..., Iterator])
 
-
-def _apply(xs: _T, fn: Callable[[Tensor], Any]) -> _T:
+def _apply[T](xs: T, fn: Callable[[Tensor], Any]) -> T:
     if isinstance(xs, Tensor):
         return fn(xs)
 
@@ -117,7 +114,7 @@ def inference(module: nn.Module) -> Iterator[None]:
 # ----------------------------- profile CUDA ops -----------------------------
 
 
-def profile(fn: _F) -> _F:
+def profile[**P, R](fn: Callable[P, Iterator[R]]) -> Callable[P, Iterator[R]]:
     """Decorator to profile CUDA ops. Use with `nvprof`
 
     Use in script launched via:
@@ -131,20 +128,21 @@ def profile(fn: _F) -> _F:
     ...         yield step(data)
 
     """
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> Iterator[R]:
         results = fn(*args, **kwargs)
         with torch.cuda.profiler.profile():
             yield from islice(results, 1)
             with torch.autograd.profiler.emit_nvtx():
                 yield from results
 
-    return cast(_F, functools.update_wrapper(wrapper, fn))
+    return functools.update_wrapper(wrapper, fn)
 
 
-def dump_to_onnx(model: nn.Module,
+def dump_to_onnx(filepath: Path | str,
+                 model: nn.Module,
                  *shapes: tuple[int, ...],
-                 device: str | torch.device = 'cpu') -> bytes:
-    """Converts model to ONNX graph, represented as bytes
+                 device: str | torch.device = 'cpu') -> None:
+    """Converts model to ONNX graph
 
     Parameters:
     - model - torch.nn.Module to convert
@@ -152,11 +150,12 @@ def dump_to_onnx(model: nn.Module,
 
     Example usage:
     >>> module = torch.nn.Linear(4, 4)
-    >>> bytes_ = dump_to_onnx(module, [4])
+    >>> filename = 'model.onnx'
+    >>> dump_to_onnx(filename, module, [4])
 
     To restore graph:
     >>> from onnxruntime import backend
-    >>> rep = backend.prepare(bytes_or_filename, device='cpu')
+    >>> rep = backend.prepare(filename, device='cpu')
     >>> rep.run([np.zeros(4, 4)])[0]
 
     """
@@ -168,15 +167,13 @@ def dump_to_onnx(model: nn.Module,
             }
         } for i, shape in enumerate(shapes)
     }
-    buf = BytesIO()
     torch.onnx.export(
         model.to(device).eval(),
         tuple(
             torch.rand(1, *s, requires_grad=True, device=device)
             for s in shapes),
-        buf,
+        filepath,
+        opset_version=17,
         input_names=[*dynamic_axes],
         dynamic_axes=dynamic_axes,
-        opset_version=13,
-        do_constant_folding=True)
-    return buf.getvalue()
+    )

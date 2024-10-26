@@ -8,13 +8,13 @@ from collections.abc import Iterable
 import torch
 from torch import Tensor, jit
 
-Number = int | float | bool
+type Number = int | float | bool
 
 
 def add_(self: Iterable[Tensor],
          other: Iterable[Tensor] | Number,
          *,
-         alpha: Number = 1):
+         alpha: Number = 1) -> None:
     """`self += other * alpha`"""
     self = list(self)
     if isinstance(other, int | float | bool):
@@ -71,11 +71,12 @@ def lerp(self: Iterable[Tensor], other: Iterable[Tensor], *,
     self = list(self)
     other = list(other)
     if can_do_foreach(self + other):
-        return torch._foreach_lerp(self, other, weight)
+        return list(torch._foreach_lerp(self, other, weight))
     return [s.lerp(o, weight) for s, o in zip(self, other)]
 
 
-def lerp_(self: Iterable[Tensor], other: Iterable[Tensor], *, weight: Number):
+def lerp_(self: Iterable[Tensor], other: Iterable[Tensor],
+          *, weight: Number) -> None:
     """`self = lerp(self, other, t)` or `self += t * (other - self)`"""
     self = list(self)
     other = list(other)
@@ -86,7 +87,7 @@ def lerp_(self: Iterable[Tensor], other: Iterable[Tensor], *, weight: Number):
             s.lerp_(o, weight)
 
 
-def maximum_(self: Iterable[Tensor], other: Iterable[Tensor]):
+def maximum_(self: Iterable[Tensor], other: Iterable[Tensor]) -> None:
     """`self = max(self, other)`"""
     self = list(self)
     other = list(other)
@@ -97,7 +98,7 @@ def maximum_(self: Iterable[Tensor], other: Iterable[Tensor]):
             torch.max(s, o, out=s)
 
 
-def mul_(self: Iterable[Tensor], *, scalar: Number = 1):
+def mul_(self: Iterable[Tensor], *, scalar: Number = 1) -> None:
     """`self *= scalar`"""
     self = list(self)
     if can_do_foreach(self):
@@ -111,11 +112,11 @@ def sqrt(self: Iterable[Tensor]) -> list[Tensor]:
     """`sqrt(self)`"""
     self = list(self)
     if can_do_foreach(self):
-        return torch._foreach_sqrt(self)
+        return list(torch._foreach_sqrt(self))
     return [torch.sqrt(s) for s in self]
 
 
-def zero_(self: Iterable[Tensor]):
+def zero_(self: Iterable[Tensor]) -> None:
     """`self = 0`"""
     self = list(self)
     if can_do_foreach(self):
