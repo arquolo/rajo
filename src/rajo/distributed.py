@@ -5,16 +5,13 @@ __all__ = [
     'barrier',
     'broadcast_call',
     'get_ddp_info',
-    'once_per_world',
-    'reduce_if_needed',
 ]
 
 import pickle
-import warnings
 from collections.abc import Callable
 from functools import partial, update_wrapper
 from multiprocessing.reduction import ForkingPickler
-from typing import TYPE_CHECKING, Any, Concatenate, NamedTuple
+from typing import Any, Concatenate, NamedTuple
 
 import torch
 import torch.cuda
@@ -147,29 +144,3 @@ def broadcast_call[**P, R](fn: Callable[P, R], /) -> Callable[P, R]:
         return result
 
     return update_wrapper(wrapper, fn)
-
-
-# -------------------------------- 0.2.x API ---------------------------------
-# TODO: remove in 0.3.x release
-
-if TYPE_CHECKING:
-    reduce_if_needed = all_reduce
-    once_per_world = broadcast_call
-
-_deprecations = {
-    'reduce_if_needed': ('all_reduce', all_reduce),
-    'once_per_world': ('broadcast_call', broadcast_call),
-}
-
-
-def __getattr__(name: str):
-    if new := _deprecations.get(name):
-        new_name, new_attr = new
-        warnings.warn(
-            f'"rajo.distributed.{name}" is deprecated. '
-            f'Use "rajo.distributed.{new_name}" instead',
-            category=DeprecationWarning,
-            stacklevel=2,
-        )
-        return new_attr
-    raise AttributeError
