@@ -1,6 +1,12 @@
 __all__ = [
-    'all_reduce', 'auto_ddp', 'auto_model', 'barrier', 'broadcast_call',
-    'get_ddp_info', 'once_per_world', 'reduce_if_needed'
+    'all_reduce',
+    'auto_ddp',
+    'auto_model',
+    'barrier',
+    'broadcast_call',
+    'get_ddp_info',
+    'once_per_world',
+    'reduce_if_needed',
 ]
 
 import pickle
@@ -41,14 +47,14 @@ def barrier(rank: int | None = None) -> None:
 def all_reduce(*tensors: Tensor, mean: bool = False) -> tuple[Tensor, ...]:
     """Reduce tensors across all machines"""
     if (ddp := get_ddp_info()) and ddp.world > 1:
-        tensors = *(t.clone() for t in tensors),
+        tensors = tuple(t.clone() for t in tensors)
 
         ops = [dist.all_reduce(t, async_op=True) for t in tensors]
         for op in ops:
             op.wait()
 
         if mean:
-            tensors = *(t / ddp.world for t in tensors),
+            tensors = tuple(t / ddp.world for t in tensors)
     return tensors
 
 
@@ -65,8 +71,9 @@ def auto_model(net: nn.Module, sync_bn: bool = True) -> nn.Module:
         return nn.parallel.DistributedDataParallel(net, device_ids=[ddp.rank])
 
     net.cuda()
-    return (nn.parallel.DataParallel(net)
-            if torch.cuda.device_count() > 1 else net)
+    return (
+        nn.parallel.DataParallel(net) if torch.cuda.device_count() > 1 else net
+    )
 
 
 class _AutoDdp[**P]:
@@ -116,6 +123,7 @@ def broadcast_call[**P, R](fn: Callable[P, R], /) -> Callable[P, R]:
     Callable will be called in single process,
     and its result will be broadcasted to all the neighbours.
     """
+
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         ddp = get_ddp_info()
         if not ddp or ddp.world == 1:
@@ -131,8 +139,9 @@ def broadcast_call[**P, R](fn: Callable[P, R], /) -> Callable[P, R]:
             handles = [b'']
             dist.broadcast_object_list(handles, src=0)
 
-            assert handles[0], \
-                '"torch.distributed.broadcast_object_list" failed'
+            assert handles[
+                0
+            ], '"torch.distributed.broadcast_object_list" failed'
             result = pickle.loads(handles[0])
 
         return result
@@ -160,6 +169,7 @@ def __getattr__(name: str):
             f'"rajo.distributed.{name}" is deprecated. '
             f'Use "rajo.distributed.{new_name}" instead',
             category=DeprecationWarning,
-            stacklevel=2)
+            stacklevel=2,
+        )
         return new_attr
     raise AttributeError

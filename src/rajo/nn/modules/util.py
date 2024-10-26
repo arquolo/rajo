@@ -11,25 +11,24 @@ def pair[T](t: T | tuple[T, ...]) -> tuple[T, ...]:
 
 
 class LazyConvFn(Protocol):
-    def __call__(self,
-                 out_channels: int,
-                 kernel_size: int,
-                 stride: int = 1,
-                 padding: int = 0,
-                 dilation: int = 1,
-                 groups: int = 1,
-                 bias: bool = True) -> nn.modules.conv._ConvNd:
-        ...
+    def __call__(
+        self,
+        out_channels: int,
+        kernel_size: int,
+        stride: int = 1,
+        padding: int = 0,
+        dilation: int = 1,
+        groups: int = 1,
+        bias: bool = True,
+    ) -> nn.modules.conv._ConvNd: ...
 
 
 class ActivationFn(Protocol):
-    def __call__(self, inplace: bool = ...) -> nn.Module:
-        ...
+    def __call__(self, inplace: bool = ...) -> nn.Module: ...
 
 
 class LazyNormFn(Protocol):
-    def __call__(self) -> nn.Module:
-        ...
+    def __call__(self) -> nn.Module: ...
 
 
 def round8(v: float, divisor: int = 8) -> int:

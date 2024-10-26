@@ -18,6 +18,7 @@ class ConvCtx:
     - 0: kernel = 2 * overlap + stride
     - 1: kernel = 2 * overlap + 1
     """
+
     conv_fn: LazyConvFn = nn.LazyConv2d
     # TODO: accept kernel_pool
     # TODO: compute padding from kernel_pool
@@ -36,21 +37,24 @@ class ConvCtx:
         return (stride if self.parity == 0 else 1) + 2 * overlap
 
     def _get_p(self, kernel: int, stride: int, dilation: int) -> int:
-        assert stride == 1 or dilation == 1, \
-            'one of stride/dilation should be always 1'
+        assert (
+            stride == 1 or dilation == 1
+        ), 'one of stride/dilation should be always 1'
         if stride == 1 and kernel % 2 == 0 and dilation % 2 != 0:
             raise ValueError('Even kernel with odd dilation is not supported')
 
         if self.parity == 0:
             total_padding = kernel - stride
-            assert total_padding >= 0, \
-                'kernel should be same or greater than stride'
+            assert (
+                total_padding >= 0
+            ), 'kernel should be same or greater than stride'
             assert total_padding >= 0
         else:
             total_padding = kernel - 1
 
-        assert total_padding % 2 == 0, \
-            'padding is not symmetric, offset kernel by 1'
+        assert (
+            total_padding % 2 == 0
+        ), 'padding is not symmetric, offset kernel by 1'
         if not self.pad:
             return 0
         return (total_padding // 2) * dilation
@@ -58,14 +62,16 @@ class ConvCtx:
     def _invert(self) -> 'ConvCtx':
         return replace(self, parity=(1, 0)[self.parity])
 
-    def conv(self,
-             dim: int,
-             kernel: int | None = None,
-             stride: int = 1,
-             overlap: int | None = None,
-             dilation: int = 1,
-             groups: int | None = 1,
-             bias: bool = True) -> nn.modules.conv._ConvNd:
+    def conv(
+        self,
+        dim: int,
+        kernel: int | None = None,
+        stride: int = 1,
+        overlap: int | None = None,
+        dilation: int = 1,
+        groups: int | None = 1,
+        bias: bool = True,
+    ) -> nn.modules.conv._ConvNd:
         """
         Basic convolutions, pass kernel explicitly:
         ```
@@ -98,20 +104,24 @@ class ConvCtx:
 
         elif stride == 1 and kernel % 2 == 0:
             warnings.warn(
-                f'Parity is altered because of {kernel=}', stacklevel=2)
+                f'Parity is altered because of {kernel=}', stacklevel=2
+            )
 
         elif stride != 1 and kernel != self.parity:
-            raise ValueError(f'Used kernel does not match used parity '
-                             f'({self.parity=}). Network is likely to break')
+            raise ValueError(
+                f'Used kernel does not match used parity ({self.parity=}). '
+                'Network is likely to break'
+            )
 
         padding = self._get_p(kernel, stride, dilation)
         groups = groups or dim
-        return self.conv_fn(dim, kernel, stride, padding, dilation, groups,
-                            bias)
+        return self.conv_fn(
+            dim, kernel, stride, padding, dilation, groups, bias
+        )
 
-    def avg_pool(self,
-                 stride: int = 2,
-                 overlap: int | None = None) -> Decimate2d | nn.AvgPool2d:
+    def avg_pool(
+        self, stride: int = 2, overlap: int | None = None
+    ) -> Decimate2d | nn.AvgPool2d:
         assert stride > 1
 
         kernel = self._get_k(stride, overlap)
@@ -121,9 +131,9 @@ class ConvCtx:
         padding = self._get_p(kernel, stride, 1)
         return nn.AvgPool2d(kernel, stride, padding)
 
-    def max_pool(self,
-                 stride: int = 2,
-                 overlap: int | None = None) -> Decimate2d | nn.MaxPool2d:
+    def max_pool(
+        self, stride: int = 2, overlap: int | None = None
+    ) -> Decimate2d | nn.MaxPool2d:
         assert stride > 1
 
         kernel = self._get_k(stride, overlap)
@@ -133,17 +143,20 @@ class ConvCtx:
         padding = self._get_p(kernel, stride, 1)
         return nn.MaxPool2d(kernel, stride, padding)
 
-    def conv_unpool(self,
-                    dim: int,
-                    stride: int = 2,
-                    overlap: int | None = None,
-                    groups: int | None = 1,
-                    bias: bool = True) -> nn.ConvTranspose2d:
+    def conv_unpool(
+        self,
+        dim: int,
+        stride: int = 2,
+        overlap: int | None = None,
+        groups: int | None = 1,
+        bias: bool = True,
+    ) -> nn.ConvTranspose2d:
         groups = groups or dim
         kernel = self._get_k(stride, overlap)
         padding = self._get_p(kernel, stride, 1)
-        return nn.LazyConvTranspose2d(dim, kernel, stride, padding, 0, groups,
-                                      bias)
+        return nn.LazyConvTranspose2d(
+            dim, kernel, stride, padding, 0, groups, bias
+        )
 
     def activation_(self) -> nn.Module:
         if self.inplace:
@@ -171,9 +184,9 @@ class ConvCtx:
         mod.bias = None
         return nn.Sequential(self.norm(), self.activation_(), mod)
 
-    def blur_pool(self,
-                  stride: int = 2,
-                  overlap: int | None = None) -> nn.Module:
+    def blur_pool(
+        self, stride: int = 2, overlap: int | None = None
+    ) -> nn.Module:
         """Replacement (and generalization) for AvgPool2d(2, 2)"""
         kernel = self._get_k(stride, overlap)
         padding = self._get_p(kernel, stride, 1)
@@ -192,10 +205,9 @@ class ConvCtx:
             self._invert().blur_pool(stride, overlap),
         )
 
-    def conv_blur_pool(self,
-                       dim: int,
-                       stride: int = 2,
-                       overlap: int = 1) -> nn.Module:
+    def conv_blur_pool(
+        self, dim: int, stride: int = 2, overlap: int = 1
+    ) -> nn.Module:
         """Replacement for [Conv2d(..., 3, 2, 1), norm, act]"""
         return nn.Sequential(
             self.conv(dim, 3),

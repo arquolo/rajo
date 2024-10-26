@@ -15,8 +15,9 @@ def laplace_kernel(size: int, /, *, normalize: bool = True) -> Tensor:
     if size % 2 != 1:
         raise ValueError(f'Kernel size should be odd. Got {size}')
     if size > 31:
-        raise ValueError('Kernel size should be less or equal then 31. '
-                         f'Got {size}')
+        raise ValueError(
+            'Kernel size should be less or equal then 31. ' f'Got {size}'
+        )
 
     effective_size = max(3, size)
     offset = effective_size // 2
@@ -25,11 +26,12 @@ def laplace_kernel(size: int, /, *, normalize: bool = True) -> Tensor:
 
     # Retrieve kernel from cv2
     # TODO: use pure torch
-    scale = size / (4 ** size) if normalize else 1
+    scale = size / (4**size) if normalize else 1
     im = cv2.Laplacian(im, cv2.CV_32F, ksize=size, scale=scale)
 
-    return torch.as_tensor(im[offset:offset + effective_size,
-                              offset:offset + effective_size])
+    return torch.as_tensor(
+        im[offset : offset + effective_size, offset : offset + effective_size]
+    )
 
 
 def rgb2gray_kernel() -> Tensor:

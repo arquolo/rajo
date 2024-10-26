@@ -1,5 +1,11 @@
 __all__ = [
-    'Confusion', 'acc', 'auc', 'dice', 't_balance', 't_otsu', 'youden_j'
+    'Confusion',
+    'acc',
+    'auc',
+    'dice',
+    't_balance',
+    't_otsu',
+    'youden_j',
 ]
 
 from collections.abc import Callable
@@ -16,10 +22,13 @@ _EPS = torch.finfo(torch.float).eps
 
 class Confusion(Staged):
     """Computes (T 2 2) confusion matrix, used for ROC and PR-based metrics"""
-    def __init__(self,
-                 bins: int = 64,
-                 normalize: bool = True,
-                 **funcs: Callable[[Tensor], Tensor]):
+
+    def __init__(
+        self,
+        bins: int = 64,
+        normalize: bool = True,
+        **funcs: Callable[[Tensor], Tensor],
+    ):
         super().__init__(**funcs)
         self.bins = bins
         self.normalize = normalize
@@ -121,8 +130,10 @@ def t_otsu(mat: Tensor) -> Tensor:
     x_cdf = F.pad((hist * u).cumsum(dim=0), [1, 0])  # (n)
     p_mean = x_cdf[-1]
 
-    t = (x_cdf.square().div_(cdf.clamp_min(_EPS)) +
-         (p_mean - x_cdf).square_().div_((1 - cdf).clamp_min_(_EPS))).argmax()
+    t = (
+        x_cdf.square().div_(cdf.clamp_min(_EPS))
+        + (p_mean - x_cdf).square_().div_((1 - cdf).clamp_min_(_EPS))
+    ).argmax()
     return t / (n - 1)
 
 

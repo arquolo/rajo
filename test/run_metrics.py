@@ -61,5 +61,10 @@ with torch.no_grad():
     meter = m.compose(*metrics)
     d = meter.send((pred, true))
     print(', '.join(f'{k}: {v:.3f}' for k, v in d.scalars.items()))
-    print(', '.join(f'{k}: {v.item():.3f}'
-                    for k, v in d.tensors.items() if v.numel() == 1))
+    print(
+        ', '.join(
+            f'{k}: {v.item():.3f}'
+            for k, v in d.tensors.items()
+            if v.numel() == 1
+        )
+    )

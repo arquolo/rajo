@@ -1,6 +1,12 @@
 __all__ = [
-    'detach_', 'device', 'dump_to_onnx', 'eval_', 'frozen', 'inference',
-    'param_count', 'profile'
+    'detach_',
+    'device',
+    'dump_to_onnx',
+    'eval_',
+    'frozen',
+    'inference',
+    'param_count',
+    'profile',
 ]
 
 import functools
@@ -34,8 +40,11 @@ def _apply[T](xs: T, fn: Callable[[Tensor], Any]) -> T:
 
 def device() -> torch.device:
     """Gets current device, including CPU"""
-    return torch.device(f'cuda:{torch.cuda.current_device()}' if torch.cuda
-                        .is_available() else 'cpu')
+    return torch.device(
+        f'cuda:{torch.cuda.current_device()}'
+        if torch.cuda.is_available()
+        else 'cpu'
+    )
 
 
 def param_count(module: nn.Module) -> int:
@@ -73,7 +82,8 @@ def detach_(module: nn.Module) -> Iterator[None]:
     NEITHER disable gradient flow NOR prevents buffers to change.
     """
     required_grad = {
-        p.detach_() for p in module.parameters()
+        p.detach_()
+        for p in module.parameters()
         if not nn.parameter.is_lazy(p) and p.requires_grad
     }
     try:
@@ -128,6 +138,7 @@ def profile[**P, R](fn: Callable[P, Iterator[R]]) -> Callable[P, Iterator[R]]:
     ...         yield step(data)
 
     """
+
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> Iterator[R]:
         results = fn(*args, **kwargs)
         with torch.cuda.profiler.profile():
@@ -138,10 +149,12 @@ def profile[**P, R](fn: Callable[P, Iterator[R]]) -> Callable[P, Iterator[R]]:
     return functools.update_wrapper(wrapper, fn)
 
 
-def dump_to_onnx(filepath: Path | str,
-                 model: nn.Module,
-                 *shapes: tuple[int, ...],
-                 device: str | torch.device = 'cpu') -> None:
+def dump_to_onnx(
+    filepath: Path | str,
+    model: nn.Module,
+    *shapes: tuple[int, ...],
+    device: str | torch.device = 'cpu',
+) -> None:
     """Converts model to ONNX graph
 
     Parameters:
@@ -162,16 +175,16 @@ def dump_to_onnx(filepath: Path | str,
     dynamic_axes = {
         f'inp_{i}': {
             0: 'batch',
-            **{
-                dim: f'inp_{i}_dim_{dim}' for dim in range(2, 1 + len(shape))
-            }
-        } for i, shape in enumerate(shapes)
+            **{dim: f'inp_{i}_dim_{dim}' for dim in range(2, 1 + len(shape))},
+        }
+        for i, shape in enumerate(shapes)
     }
     torch.onnx.export(
         model.to(device).eval(),
         tuple(
             torch.rand(1, *s, requires_grad=True, device=device)
-            for s in shapes),
+            for s in shapes
+        ),
         filepath,
         opset_version=17,
         input_names=[*dynamic_axes],

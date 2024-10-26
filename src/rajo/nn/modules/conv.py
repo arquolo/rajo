@@ -33,11 +33,13 @@ class DenseBlock(nn.ModuleList):
     depth: Final[int]
     bottleneck: Final[bool]
 
-    def __init__(self,
-                 depth: int = 4,
-                 step: int = 16,
-                 bottleneck: bool = True,
-                 ctx: ConvCtx | None = None):
+    def __init__(
+        self,
+        depth: int = 4,
+        step: int = 16,
+        bottleneck: bool = True,
+        ctx: ConvCtx | None = None,
+    ):
         ctx = ctx or ConvCtx()
         dim_inner = round8(step * self.expansion)
 
@@ -48,8 +50,8 @@ class DenseBlock(nn.ModuleList):
                 layer += ctx.norm_act_conv(ctx.conv(dim_inner, 1))
             layer += ctx.norm_act_conv(ctx.conv(step, 3))
             layers.append(
-                Cat(*layer) if self.efficient else nn
-                .Sequential(Cat(), *layer))
+                Cat(*layer) if self.efficient else nn.Sequential(Cat(), *layer)
+            )
 
         super().__init__(layers)
 
@@ -58,8 +60,9 @@ class DenseBlock(nn.ModuleList):
         self.bottleneck = bottleneck
 
     def __repr__(self) -> str:
-        dim_in = next(m for m in self.modules()
-                      if isinstance(m, nn.modules.conv._ConvNd)).in_channels
+        dim_in = next(
+            m for m in self.modules() if isinstance(m, nn.modules.conv._ConvNd)
+        ).in_channels
 
         dim_out = self.step * self.depth
         if not isinstance(self, DenseDelta):
@@ -91,11 +94,13 @@ class DenseDelta(DenseBlock):
 
 
 class SqueezeExcitation(Gate):
-    def __init__(self,
-                 dim: int,
-                 ratio: float = 0.25,
-                 activation: ActivationFn = nn.SiLU,
-                 scale_activation: ActivationFn = nn.Sigmoid):
+    def __init__(
+        self,
+        dim: int,
+        ratio: float = 0.25,
+        activation: ActivationFn = nn.SiLU,
+        scale_activation: ActivationFn = nn.Sigmoid,
+    ):
         dim_inner = round8(dim * ratio)
         super().__init__(
             Reduce('b c h w -> b c', 'mean'),
@@ -117,10 +122,10 @@ class SqueezeExcitation(Gate):
 
 class ResidualBlock(nn.Sequential):
     """BasicBlock from ResNet-18/34"""
-    def __init__(self,
-                 dim: int,
-                 dropout: float = 0.,
-                 ctx: ConvCtx | None = None):
+
+    def __init__(
+        self, dim: int, dropout: float = 0.0, ctx: ConvCtx | None = None
+    ):
         ctx = ctx or ConvCtx()
         # TODO: Support stride
         super().__init__(
@@ -140,13 +145,15 @@ class BottleneckResidualBlock(nn.Sequential):
     """BottleneckBlock from ResNet-50/101/152"""
 
     # https://arxiv.org/abs/1512.03385
-    def __init__(self,
-                 dim: int,
-                 bn_ratio: float = 0.25,
-                 se_ratio: float = 0.25,
-                 groups: int | None = 1,
-                 dropout: float = 0.,
-                 ctx: ConvCtx | None = None):
+    def __init__(
+        self,
+        dim: int,
+        bn_ratio: float = 0.25,
+        se_ratio: float = 0.25,
+        groups: int | None = 1,
+        dropout: float = 0.0,
+        ctx: ConvCtx | None = None,
+    ):
         ctx = ctx or ConvCtx()
         dim_inner = round8(dim * bn_ratio)
         # TODO: Support stride
@@ -160,8 +167,11 @@ class BottleneckResidualBlock(nn.Sequential):
                 ctx.activation_(),
                 ctx.conv(dim, 1, bias=False),
                 ctx.norm(),
-                *([SqueezeExcitation(dim, se_ratio, ctx.activation)]
-                  if se_ratio else []),
+                *(
+                    [SqueezeExcitation(dim, se_ratio, ctx.activation)]
+                    if se_ratio
+                    else []
+                ),
                 StochasticDepth(dropout, 'row'),
             ),
             ctx.activation_(),
@@ -169,22 +179,26 @@ class BottleneckResidualBlock(nn.Sequential):
 
 
 class ResNeXtBlock(BottleneckResidualBlock):
-    def __init__(self,
-                 dim: int,
-                 se_ratio: float = 0.25,
-                 dropout: float = 0.,
-                 ctx: ConvCtx | None = None):
+    def __init__(
+        self,
+        dim: int,
+        se_ratio: float = 0.25,
+        dropout: float = 0.0,
+        ctx: ConvCtx | None = None,
+    ):
         ctx = ctx or ConvCtx()
         # TODO: Support stride
         super().__init__(dim, 0.5, se_ratio, 32, dropout, ctx)
 
 
-def _mbconv_base(dim: int,
-                 dim_inner: int,
-                 dim_out: int,
-                 stride: int = 1,
-                 se_ratio: float = 0.25,
-                 ctx: ConvCtx | None = None) -> list[nn.Module]:
+def _mbconv_base(
+    dim: int,
+    dim_inner: int,
+    dim_out: int,
+    stride: int = 1,
+    se_ratio: float = 0.25,
+    ctx: ConvCtx | None = None,
+) -> list[nn.Module]:
     ctx = ctx or ConvCtx()  # or nn.HardSwish
 
     children: list[nn.Module] = []
@@ -195,8 +209,13 @@ def _mbconv_base(dim: int,
             ctx.activation_(),
         ]
     children += [
-        ctx.conv(dim_inner, 3, groups=dim_inner, bias=False) if stride == 1
-        else ctx.conv(dim_inner, stride=stride, groups=dim_inner, bias=False)
+        (
+            ctx.conv(dim_inner, 3, groups=dim_inner, bias=False)
+            if stride == 1
+            else ctx.conv(
+                dim_inner, stride=stride, groups=dim_inner, bias=False
+            )
+        )
     ]
     children += [
         ctx.norm(),
@@ -215,13 +234,15 @@ def _mbconv_base(dim: int,
     return children
 
 
-def mobilenet_v3_block(dim: int,
-                       dim_inner: int,
-                       dim_out: int | None = None,
-                       stride: int = 1,
-                       se_ratio: float = 0.,
-                       dropout: float = 0.,
-                       ctx: ConvCtx | None = None):
+def mobilenet_v3_block(
+    dim: int,
+    dim_inner: int,
+    dim_out: int | None = None,
+    stride: int = 1,
+    se_ratio: float = 0.0,
+    dropout: float = 0.0,
+    ctx: ConvCtx | None = None,
+):
     dim_out = dim_out or dim
     children = _mbconv_base(dim, dim_inner, dim_out, stride, se_ratio, ctx)
 
@@ -232,27 +253,32 @@ def mobilenet_v3_block(dim: int,
     return Residual(*children)
 
 
-def mobilenet_v2_block(dim: int,
-                       dim_out: int | None = None,
-                       stride: int = 1,
-                       bn_ratio: float = 6.,
-                       dropout: float = 0.,
-                       ctx: ConvCtx | None = None):
+def mobilenet_v2_block(
+    dim: int,
+    dim_out: int | None = None,
+    stride: int = 1,
+    bn_ratio: float = 6.0,
+    dropout: float = 0.0,
+    ctx: ConvCtx | None = None,
+):
     ctx = ctx or ConvCtx(activation=nn.ReLU6)
     dim_inner = round8(dim * bn_ratio)
-    return mobilenet_v3_block(dim, dim_inner, dim_out, stride, 0., dropout,
-                              ctx)
+    return mobilenet_v3_block(
+        dim, dim_inner, dim_out, stride, 0.0, dropout, ctx
+    )
 
 
 # ------------------------------- efficientnet -------------------------------
 
 
-def mbconv(dim: int,
-           stride: int = 1,
-           bn_ratio: float = 3.,
-           se_ratio: float = 0.25,
-           dropout: float = 0.,
-           ctx: ConvCtx | None = None) -> nn.Module:
+def mbconv(
+    dim: int,
+    stride: int = 1,
+    bn_ratio: float = 3.0,
+    se_ratio: float = 0.25,
+    dropout: float = 0.0,
+    ctx: ConvCtx | None = None,
+) -> nn.Module:
     """
     According to the original article or MaxViT, this one should be:
     ```
@@ -277,8 +303,9 @@ def mbconv(dim: int,
     mobilenet_v3_block.
     """
     dim_inner = round8(dim * bn_ratio)
-    return mobilenet_v3_block(dim, dim_inner, dim, stride, se_ratio, dropout,
-                              ctx)
+    return mobilenet_v3_block(
+        dim, dim_inner, dim, stride, se_ratio, dropout, ctx
+    )
 
 
 # --------------------------------- resnest ----------------------------------
@@ -289,13 +316,16 @@ class SplitAttention(nn.Module):
     Split-Attention (aka Splat) block from ResNeSt.
     If radix == 1, equals to SqueezeExitation block from SENet.
     """
+
     radix: Final[int]
 
-    def __init__(self,
-                 dim: int,
-                 groups: int = 1,
-                 radix: int = 2,
-                 ctx: ConvCtx | None = None):
+    def __init__(
+        self,
+        dim: int,
+        groups: int = 1,
+        radix: int = 2,
+        ctx: ConvCtx | None = None,
+    ):
         assert dim % (groups * radix) == 0
         ctx = ctx or ConvCtx()
         dim_inner = dim * radix // 4
@@ -305,13 +335,11 @@ class SplitAttention(nn.Module):
         self.attn = nn.Sequential(
             # Mean by radix and spatial dims
             Reduce('b r gc h w -> b gc 1 1', 'mean'),
-
             # Core
             ctx.conv(dim_inner, 1, groups=groups, bias=False),
             ctx.norm(),
             ctx.activation_(),
             ctx.conv(dim * radix, 1, groups=groups, bias=False),
-
             # Normalize
             Rearrange('b (g r c) 1 1 -> b r (g c)', g=groups, r=radix),
             nn.Sigmoid() if radix == 1 else nn.Softmax(1),
@@ -336,13 +364,15 @@ class SplitAttention(nn.Module):
         return chw.contiguous()
 
 
-def resnest_block(dim: int,
-                  stride: int = 1,
-                  radix: int = 1,
-                  groups: int = 1,
-                  rate: float = 0.25,
-                  dropout: float = 0,
-                  ctx: ConvCtx | None = None) -> nn.Module:
+def resnest_block(
+    dim: int,
+    stride: int = 1,
+    radix: int = 1,
+    groups: int = 1,
+    rate: float = 0.25,
+    dropout: float = 0,
+    ctx: ConvCtx | None = None,
+) -> nn.Module:
     ctx = ctx or ConvCtx()
     # dim_inner = round8(dim * rate) * groups  # TODO
     if stride != 1:

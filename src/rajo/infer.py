@@ -45,12 +45,15 @@ class MultiheadIndexer(Indexer):
     Indexer will expect 5-channel scores (2 + 3) and will output
     "A" for [0, :] max, "B" for [1, 0] or [1, 1], and "C" for [1, 2].
     """
+
     lut: npt.NDArray[np.integer] | None = None
 
-    def __init__(self,
-                 labels: Mapping[str, Sequence[Sequence[int]]],
-                 heads: Sequence[int],
-                 minimize: bool = True):
+    def __init__(
+        self,
+        labels: Mapping[str, Sequence[Sequence[int]]],
+        heads: Sequence[int],
+        minimize: bool = True,
+    ) -> None:
         num_heads = len(heads)
         self._total = sum(heads)
 
@@ -62,9 +65,10 @@ class MultiheadIndexer(Indexer):
         for t, sets in labels.items():
             lut = np.zeros(heads, np.bool_)
             for multi in sets:
-                assert len(multi) <= num_heads, (
-                    f'Index {multi} is deeper than head count ({num_heads})')
-                loc = *(j if j != -1 else slice(None) for j in multi),
+                assert (
+                    len(multi) <= num_heads
+                ), f'Index {multi} is deeper than head count ({num_heads})'
+                loc = tuple(j if j != -1 else slice(None) for j in multi)
                 lut[loc] = True
             self.labels[t] = lut.ravel().nonzero()[0].astype(dtype)
 
@@ -81,7 +85,8 @@ class MultiheadIndexer(Indexer):
 
         # Find unique cross-label usages of classes
         u, idx, lut = np.unique(
-            mask, axis=1, return_index=True, return_inverse=True)
+            mask, axis=1, return_index=True, return_inverse=True
+        )
         lut = idx.argsort()[lut]  # Ensure ascending
 
         never_used = (u == 0).all(0)  # We have classes never used by any label
@@ -105,8 +110,9 @@ class MultiheadIndexer(Indexer):
         scores: npt.NDArray[np.number],
     ) -> npt.NDArray[np.integer]:
         """Get index (*) of most probable class from class scores (* C)."""
-        assert scores.shape[-1] == self._total, \
-            f'Expected {self._total} channels, got {scores.shape[-1]}'
+        assert (
+            scores.shape[-1] == self._total
+        ), f'Expected {self._total} channels, got {scores.shape[-1]}'
 
         r = self._pnr(scores)
         return self.lut[r] if self.lut is not None else r
@@ -122,8 +128,11 @@ class PackedNargmaxRavel:
 
         # Do uint8 optimization, 2x perf
         # Per-channel value offset
-        self._idx256_u2 = (256 * (self._idx.astype('u2') + 1)
-                           if self._num_heads < 255 else None)
+        self._idx256_u2 = (
+            256 * (self._idx.astype('u2') + 1)
+            if self._num_heads < 255
+            else None
+        )
 
         # First channel in head
         splits = np.cumsum([0, *heads[:-1]])
@@ -135,8 +144,9 @@ class PackedNargmaxRavel:
         mul = np.r_[strides, -ddof][None, :]
         self._scale = apack(mul)
 
-    def __call__(self,
-                 scores: npt.NDArray[np.number]) -> npt.NDArray[np.integer]:
+    def __call__(
+        self, scores: npt.NDArray[np.number]
+    ) -> npt.NDArray[np.integer]:
         """Effectively the same as
         ```
             heads = np.split(scores, self._splits, axis=-1)

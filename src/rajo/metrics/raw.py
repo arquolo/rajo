@@ -23,7 +23,8 @@ def _flat_dice(c: int, y_pred: Tensor, y: Tensor, /) -> Tensor:
     # true positive, positive & predicted positive counts
     tp, p, pp = (
         x.bincount(minlength=c).clamp_min_(1).double()
-        for x in (y[y == y_pred], y, y_pred))
+        for x in (y[y == y_pred], y, y_pred)
+    )
     return 2 * tp / (p + pp)
 
 
@@ -72,11 +73,15 @@ def _rankdata(ten: Tensor) -> Tensor:
 
 def _binary_metric(fn):
     """Applies specified function only on probabilities of indexed class"""
+
     def call(y_pred: Tensor, y: Tensor, /, *, index: int = 0) -> Tensor:
         y_pred, y = class_probs(y_pred, y)
 
-        yc_pred = ((y_pred if index == 1 else
-                    (1 - y_pred)) if y_pred.ndim == 1 else y_pred[:, index])
+        yc_pred = (
+            (y_pred if index == 1 else 1 - y_pred)
+            if y_pred.ndim == 1
+            else y_pred[:, index]
+        )
         yc = y == index
 
         return fn(yc_pred.view(-1), yc.view(-1))

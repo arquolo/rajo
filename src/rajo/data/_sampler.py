@@ -5,8 +5,13 @@ from itertools import chain, cycle, islice
 from typing import Protocol
 
 import torch
-from torch.utils.data import (RandomSampler, Sampler, SequentialSampler,
-                              SubsetRandomSampler, WeightedRandomSampler)
+from torch.utils.data import (
+    RandomSampler,
+    Sampler,
+    SequentialSampler,
+    SubsetRandomSampler,
+    WeightedRandomSampler,
+)
 
 from ..distributed import get_ddp_info
 
@@ -31,24 +36,21 @@ def generate_seed() -> int:
 
 
 class SamplerLike[T](Protocol):
-    def __iter__(self) -> Iterator[T]:
-        ...
+    def __iter__(self) -> Iterator[T]: ...
 
-    def __len__(self) -> int:
-        ...
+    def __len__(self) -> int: ...
 
 
 class DdpSampler[T](Sampler[T]):
-    def __init__(self,
-                 sampler: Sampler[T] | SamplerLike[T],
-                 drop_last: bool = False) -> None:
+    def __init__(
+        self, sampler: Sampler[T] | SamplerLike[T], drop_last: bool = False
+    ) -> None:
         assert isinstance(sampler, Sized)
         self.base = sampler
         self.drop_last = drop_last
         self.seed = generate_seed()
 
-        if (isinstance(sampler, _TORCH_SAMPLERS)
-                and sampler.generator is None):
+        if isinstance(sampler, _TORCH_SAMPLERS) and sampler.generator is None:
             # Enforce to use local generator
             sampler.generator = torch.Generator()
 
@@ -76,7 +78,7 @@ class DdpSampler[T](Sampler[T]):
                 if len(self.base) < ddp.world:
                     indices = cycle(indices)
                 else:
-                    *head, = islice(indices, padding)
+                    head = list(islice(indices, padding))
                     indices = chain(head, indices, head)
 
             return islice(indices, ddp.rank, total, ddp.world)

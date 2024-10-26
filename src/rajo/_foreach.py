@@ -1,6 +1,13 @@
 __all__ = [
-    'add_', 'addcdiv_', 'addcmul_', 'lerp', 'lerp_', 'maximum_', 'mul_',
-    'sqrt', 'zero_'
+    'add_',
+    'addcdiv_',
+    'addcmul_',
+    'lerp',
+    'lerp_',
+    'maximum_',
+    'mul_',
+    'sqrt',
+    'zero_',
 ]
 
 from collections.abc import Iterable
@@ -11,10 +18,12 @@ from torch import Tensor, jit
 type Number = int | float | bool
 
 
-def add_(self: Iterable[Tensor],
-         other: Iterable[Tensor] | Number,
-         *,
-         alpha: Number = 1) -> None:
+def add_(
+    self: Iterable[Tensor],
+    other: Iterable[Tensor] | Number,
+    *,
+    alpha: Number = 1,
+) -> None:
     """`self += other * alpha`"""
     self = list(self)
     if isinstance(other, int | float | bool):
@@ -33,11 +42,13 @@ def add_(self: Iterable[Tensor],
                 s.add_(o, alpha=alpha)
 
 
-def addcdiv_(self: Iterable[Tensor],
-             tensor1: Iterable[Tensor],
-             tensor2: Iterable[Tensor],
-             *,
-             value: Number = 1):
+def addcdiv_(
+    self: Iterable[Tensor],
+    tensor1: Iterable[Tensor],
+    tensor2: Iterable[Tensor],
+    *,
+    value: Number = 1,
+):
     """`self += value * tensor1 / tensor2`"""
     self = list(self)
     tensor1 = list(tensor1)
@@ -49,11 +60,13 @@ def addcdiv_(self: Iterable[Tensor],
             s.addcdiv_(t1, t2, value=value)
 
 
-def addcmul_(self: Iterable[Tensor],
-             tensor1: Iterable[Tensor],
-             tensor2: Iterable[Tensor],
-             *,
-             value: Number = 1):
+def addcmul_(
+    self: Iterable[Tensor],
+    tensor1: Iterable[Tensor],
+    tensor2: Iterable[Tensor],
+    *,
+    value: Number = 1,
+):
     """`self += value * tensor1 * tensor2`"""
     self = list(self)
     tensor1 = list(tensor1)
@@ -65,8 +78,9 @@ def addcmul_(self: Iterable[Tensor],
             s.addcmul_(t1, t2, value=value)
 
 
-def lerp(self: Iterable[Tensor], other: Iterable[Tensor], *,
-         weight: Number) -> list[Tensor]:
+def lerp(
+    self: Iterable[Tensor], other: Iterable[Tensor], *, weight: Number
+) -> list[Tensor]:
     """`lerp(self, other, t)`"""
     self = list(self)
     other = list(other)
@@ -75,8 +89,9 @@ def lerp(self: Iterable[Tensor], other: Iterable[Tensor], *,
     return [s.lerp(o, weight) for s, o in zip(self, other)]
 
 
-def lerp_(self: Iterable[Tensor], other: Iterable[Tensor],
-          *, weight: Number) -> None:
+def lerp_(
+    self: Iterable[Tensor], other: Iterable[Tensor], *, weight: Number
+) -> None:
     """`self = lerp(self, other, t)` or `self += t * (other - self)`"""
     self = list(self)
     other = list(other)

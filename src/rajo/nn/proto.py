@@ -8,15 +8,25 @@ import torch
 from einops.layers.torch import Rearrange, Reduce
 from torch import Tensor, nn
 
-from .modules import (ConvCtx, DenseBlock, DenseDelta, Encoder, Ensemble,
-                      LazyBias2d, MaxVitBlock, VitBlock)
+from .modules import (
+    ConvCtx,
+    DenseBlock,
+    DenseDelta,
+    Encoder,
+    Ensemble,
+    LazyBias2d,
+    MaxVitBlock,
+    VitBlock,
+)
 
 
-def fc_densenet(num_classes: int,
-                init: int = 48,
-                depths: Iterable[int] = (4, 4),
-                step: int = 12,
-                bottleneck: bool = False):
+def fc_densenet(
+    num_classes: int,
+    init: int = 48,
+    depths: Iterable[int] = (4, 4),
+    step: int = 12,
+    bottleneck: bool = False,
+):
     # TODO: define Fold/Unfold or Stash/Braid module
     # TODO: use flat structure instead of recursive nesting used currently
     """
@@ -27,7 +37,7 @@ def fc_densenet(num_classes: int,
     Theano/Lasagne-based implementation,
     and (https://github.com/bfortuner/pytorch_tiramisu) as pytorch fork.
     """
-    *depths, = depths
+    depths = list(depths)
     *dims, _ = accumulate([init] + [step * depth for depth in depths])
 
     core: list[nn.Module] = []
@@ -64,10 +74,9 @@ def fc_densenet(num_classes: int,
 
 
 class CatToken(nn.Module):  # [B, N, D] -> [B, 1 + N, D]
-    def __init__(self,
-                 dim: int,
-                 count: int = 1,
-                 device: torch.device | None = None):
+    def __init__(
+        self, dim: int, count: int = 1, device: torch.device | None = None
+    ) -> None:
         super().__init__()
         self.token = nn.Parameter(torch.empty(count, dim, device=device))
         nn.init.normal_(self.token)
@@ -90,17 +99,19 @@ class PopToken(nn.Module):  # [B, N, D] -> [B, D]
 # -------------------------------- models ------------------------------------
 
 
-def vit(num_classes: int,
-        patch_size: int,
-        depth: int,
-        dim: int,
-        dim_head: int = 64,
-        mlp_ratio: float = 4.,
-        pool: Literal['cls', 'mean'] = 'cls',
-        dropout: float = 0.,
-        dropout_emb: float = 0.,
-        qkv_bias: bool = True,
-        reattn: bool = False) -> Encoder:
+def vit(
+    num_classes: int,
+    patch_size: int,
+    depth: int,
+    dim: int,
+    dim_head: int = 64,
+    mlp_ratio: float = 4.0,
+    pool: Literal['cls', 'mean'] = 'cls',
+    dropout: float = 0.0,
+    dropout_emb: float = 0.0,
+    qkv_bias: bool = True,
+    reattn: bool = False,
+) -> Encoder:
     assert pool in {'cls', 'mean'}
 
     stem = nn.Sequential(
@@ -123,8 +134,10 @@ def vit(num_classes: int,
         # Operates in (b n d) domain
         nn.Identity() if pool == 'mean' else CatToken(dim),
         nn.Dropout(dropout_emb, inplace=True),
-        *(VitBlock(dim, dim_head, mlp_ratio, dropout, qkv_bias, reattn)
-          for _ in range(depth)),
+        *(
+            VitBlock(dim, dim_head, mlp_ratio, dropout, qkv_bias, reattn)
+            for _ in range(depth)
+        ),
         Reduce('b n d -> b d', 'mean') if pool == 'mean' else PopToken(),
     )
     head = nn.Sequential(
@@ -134,17 +147,19 @@ def vit(num_classes: int,
     return Encoder(stem, transformer, head)
 
 
-def max_vit(num_classes: int,
-            depths: tuple[int, ...],
-            dim: int,
-            dim_head: int = 32,
-            dim_stem: int | None = None,
-            window_size: int = 7,
-            bn_ratio: float = 4,
-            se_ratio: float = 0.25,
-            mlp_ratio: float = 4,
-            qkv_bias: bool = False,
-            dropout: float = 0.1) -> Encoder:
+def max_vit(
+    num_classes: int,
+    depths: tuple[int, ...],
+    dim: int,
+    dim_head: int = 32,
+    dim_stem: int | None = None,
+    window_size: int = 7,
+    bn_ratio: float = 4,
+    se_ratio: float = 0.25,
+    mlp_ratio: float = 4,
+    qkv_bias: bool = False,
+    dropout: float = 0.1,
+) -> Encoder:
     dim_stem = dim_stem or dim
     # ctx = ConvCtx(activation=nn.GELU, inplace=False, overlap=0)  # 1
     # ctx = ConvCtx(activation=nn.GELU, inplace=False, parity=0, overlap=0)  # 2
@@ -157,14 +172,23 @@ def max_vit(num_classes: int,
         ctx.conv(dim_stem, 3),
     )
 
-    dims = *(dim << i for i, _ in enumerate(depths)),
-    dims = (dim_stem, *dims)
+    dims = dim_stem, *(dim << i for i, _ in enumerate(depths))
 
     layers: list[nn.Module] = []
     for d, depth in zip(dims[1:], depths):
         layers += [
-            MaxVitBlock(d, dim_head, window_size, stride, bn_ratio, se_ratio,
-                        mlp_ratio, dropout, qkv_bias, ctx)
+            MaxVitBlock(
+                d,
+                dim_head,
+                window_size,
+                stride,
+                bn_ratio,
+                se_ratio,
+                mlp_ratio,
+                dropout,
+                qkv_bias,
+                ctx,
+            )
             for stride in [2] + [1] * (depth - 1)
         ]
 

@@ -17,11 +17,9 @@ _EPS = torch.finfo(torch.float).eps
 # ---------------------------- prevalent classes -----------------------------
 
 
-def confusion(y_pred: Tensor,
-              y: Tensor,
-              /,
-              *,
-              normalize: bool = False) -> Tensor:
+def confusion(
+    y_pred: Tensor, y: Tensor, /, *, normalize: bool = False
+) -> Tensor:
     """
     CxC confusion matrix over prevalent classes.
 
@@ -96,11 +94,9 @@ def class_ids(
 # --------------------------- class probabilities ----------------------------
 
 
-def soft_confusion(y_pred: Tensor,
-                   y: Tensor,
-                   /,
-                   *,
-                   normalize: bool = False) -> Tensor:
+def soft_confusion(
+    y_pred: Tensor, y: Tensor, /, *, normalize: bool = False
+) -> Tensor:
     """
     CxC confusion matrix over class probabilities. World-wise.
     Preserves gradient.
@@ -125,18 +121,15 @@ def soft_confusion(y_pred: Tensor,
         neg = y.bincount(minlength=2).float() - pos
         mat = torch.stack([neg, pos], 1)
 
-    mat, = all_reduce(mat)
+    (mat,) = all_reduce(mat)
     if normalize:
         mat = mat / mat.sum().clamp_min(_EPS)
     return mat
 
 
-def roc_confusion(y_pred: Tensor,
-                  y: Tensor,
-                  /,
-                  *,
-                  bins: int = 64,
-                  normalize: bool = False) -> Tensor:
+def roc_confusion(
+    y_pred: Tensor, y: Tensor, /, *, bins: int = 64, normalize: bool = False
+) -> Tensor:
     """
     TxCxC confusion matrix over class probabilities computed
     for multiple thresholds. World-wise. Useful for AUROC, Youden J, AP.

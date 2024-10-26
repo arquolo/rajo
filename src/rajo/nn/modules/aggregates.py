@@ -1,5 +1,11 @@
 __all__ = [
-    'Cat', 'Encoder', 'Ensemble', 'Gate', 'Residual', 'ResidualCat', 'pre_norm'
+    'Cat',
+    'Encoder',
+    'Ensemble',
+    'Gate',
+    'Residual',
+    'ResidualCat',
+    'pre_norm',
 ]
 
 from collections.abc import Iterable
@@ -18,11 +24,13 @@ type _EnsembleMode = Literal['cat', 'sum', 'mean']
 class Ensemble(nn.ModuleList):
     mode: Final[_EnsembleMode]
 
-    def __init__(self, *branches: nn.Module | Iterable[nn.Module],
-                 mode: _EnsembleMode) -> None:
+    def __init__(
+        self, *branches: nn.Module | Iterable[nn.Module], mode: _EnsembleMode
+    ) -> None:
         modules = (
             b if isinstance(b, nn.Module) else nn.Sequential(*b)
-            for b in branches)
+            for b in branches
+        )
         super().__init__(modules)
         self.mode = mode
 
@@ -62,6 +70,7 @@ class _Sequential(nn.ModuleList):
     that can be accessed in a subclass.
     See https://github.com/pytorch/pytorch/issues/42885.
     """
+
     def __init__(self, *modules: nn.Module) -> None:
         super().__init__(modules)
 
@@ -74,18 +83,21 @@ class _Sequential(nn.ModuleList):
 
 class ResidualCat(_Sequential):
     """Returns `cat([input, self(input)], dim=1)`, useful for U-Net"""
+
     def forward(self, x: Tensor) -> Tensor:
         return torch.cat([x, self.seq(x)], 1)
 
 
 class Gate(_Sequential):
     """Returns input * self(input)"""
+
     def forward(self, x: Tensor) -> Tensor:
         return x * self.seq(x)
 
 
 class Residual(_Sequential):
     """Returns input + self(input)"""
+
     def forward(self, x: Tensor) -> Tensor:
         return x + self.seq(x)
 
@@ -100,6 +112,7 @@ class Cat(_Sequential):
     ```
     Checkpoints if makes sense.
     """
+
     def cat(self, xs: list[Tensor]) -> Tensor:
         x = torch.cat(xs, 1) if len(xs) != 1 else xs[0]
         return self.seq(x)

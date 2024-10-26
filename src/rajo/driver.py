@@ -22,7 +22,7 @@ def _get_device_handles() -> list:
     if devices is not None:
         indices = [int(dev) for dev in devices.split(',')]
     else:
-        *indices, = range(int(pynvml.nvmlDeviceGetCount()))
+        indices = range(int(pynvml.nvmlDeviceGetCount()))
 
     return [pynvml.nvmlDeviceGetHandleByIndex(i) for i in indices]
 
@@ -43,7 +43,8 @@ def get_gpu_memory_info() -> _GpuState:
     """Gives size of free and total VRAM memory for each GPU"""
     with _nvml():
         handles = _get_device_handles()
-        *infos, = map(pynvml.nvmlDeviceGetMemoryInfo, handles)
+        infos = [pynvml.nvmlDeviceGetMemoryInfo(h) for h in handles]
 
-    return _GpuState([si_bin(i.free) for i in infos],
-                     [si_bin(i.total) for i in infos])
+    return _GpuState(
+        [si_bin(i.free) for i in infos], [si_bin(i.total) for i in infos]
+    )

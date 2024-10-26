@@ -1,6 +1,13 @@
 __all__ = [
-    'Bias2d', 'BlurPool2d', 'Conv2dWs', 'Decimate2d', 'Laplace', 'Noise',
-    'RgbToGray', 'Scale', 'Upscale2d'
+    'Bias2d',
+    'BlurPool2d',
+    'Conv2dWs',
+    'Decimate2d',
+    'Laplace',
+    'Noise',
+    'RgbToGray',
+    'Scale',
+    'Upscale2d',
 ]
 
 from collections.abc import Iterable
@@ -46,10 +53,9 @@ class Noise(nn.Module):
 
 
 class Bias2d(nn.Module):
-    def __init__(self,
-                 dim: int,
-                 *size: int,
-                 device: torch.device | None = None):
+    def __init__(
+        self, dim: int, *size: int, device: torch.device | None = None
+    ):
         super().__init__()
         assert len(size) == 2
         self.bias = nn.Parameter(torch.empty(1, dim, *size, device=device))
@@ -69,7 +75,8 @@ class Bias2d(nn.Module):
         if jit.is_tracing() or bias.shape[2:] != size:
             # Stretch to input size
             bias = TF.interpolate(
-                bias, size, mode='bicubic', align_corners=False)
+                bias, size, mode='bicubic', align_corners=False
+            )
 
         return x + bias
 
@@ -82,7 +89,7 @@ class Decimate2d(nn.Module):
         self.stride = stride
 
     def forward(self, x: Tensor) -> Tensor:
-        return x[:, :, ::self.stride, ::self.stride]
+        return x[:, :, :: self.stride, :: self.stride]
 
     def extra_repr(self) -> str:
         return f'stride={self.stride}'
@@ -110,6 +117,7 @@ class Upscale2d(nn.Module):
 
     For comparison see [here](http://entropymine.com/imageworsener/matching).
     """
+
     stride: Final[int]
 
     def __init__(self, stride: int = 2):
@@ -128,23 +136,34 @@ class Conv2dWs(nn.Conv2d):
     [Weight standartization](https://arxiv.org/pdf/1903.10520.pdf).
     Better use with GroupNorm(32, features).
     """
+
     def forward(self, x: Tensor) -> Tensor:
-        return F.conv2d_ws(x, self.weight, self.bias, self.stride,
-                           self.padding, self.dilation, self.groups)
+        return F.conv2d_ws(
+            x,
+            self.weight,
+            self.bias,
+            self.stride,
+            self.padding,
+            self.dilation,
+            self.groups,
+        )
 
 
 # --------------------------------- blurpool ---------------------------------
 
 
 class BlurPool2d(nn.Conv2d):
-    def __init__(self,
-                 dim: int,
-                 kernel: int = 4,
-                 stride: int = 2,
-                 padding: int = 1,
-                 padding_mode: str = 'reflect'):
-        super().__init__(dim, dim, kernel, stride, padding, 1, dim, False,
-                         padding_mode)
+    def __init__(
+        self,
+        dim: int,
+        kernel: int = 4,
+        stride: int = 2,
+        padding: int = 1,
+        padding_mode: str = 'reflect',
+    ):
+        super().__init__(
+            dim, dim, kernel, stride, padding, 1, dim, False, padding_mode
+        )
         to_buffers(self, persistent=False)
 
     @torch.no_grad()
@@ -167,7 +186,7 @@ class Laplace(nn.Conv2d):
     normalize: Final[bool]
 
     def __init__(self, ksizes: Iterable[int], normalize: bool = True):
-        self.ksizes = *ksizes,
+        self.ksizes = (*ksizes,)
         self.normalize = normalize
         nk = len(self.ksizes)
         kmax = max(self.ksizes)
@@ -185,7 +204,7 @@ class Laplace(nn.Conv2d):
         self.weight.zero_()
         for w, dst in zip(kernels, self.weight[:, 0, ...]):
             pad = (kmax - w.shape[0]) // 2
-            dst[pad:kmax - pad, pad:kmax - pad].copy_(w, non_blocking=True)
+            dst[pad : kmax - pad, pad : kmax - pad].copy_(w, non_blocking=True)
 
     def __repr__(self) -> str:
         nk = len(self.ksizes)

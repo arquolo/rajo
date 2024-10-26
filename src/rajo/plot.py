@@ -42,12 +42,14 @@ def sized(var: Tensor):
 
 
 class Builder:
-    def __init__(self,
-                 inputs: set[str],
-                 params: dict[str, str],
-                 *,
-                 nesting: bool = True,
-                 variables: bool = True):
+    def __init__(
+        self,
+        inputs: set[str],
+        params: dict[str, str],
+        *,
+        nesting: bool = True,
+        variables: bool = True,
+    ) -> None:
         self.inputs = inputs
         self.params = params
         self.nesting = nesting
@@ -97,7 +99,7 @@ class Builder:
         root.node(var_id, label, fillcolor=color)
 
     def _traverse_saved(self, grad_id: str, *tensors):
-        tensors = *(v for v in tensors if isinstance(v, Tensor)),
+        tensors = tuple(v for v in tensors if isinstance(v, Tensor))
         if not tensors:
             return
         s_ctx = self.stack[-1].subgraph()
@@ -137,8 +139,11 @@ class Builder:
 
             next_id = id_(grad_next)
             tail = self._memo.get(next_id)
-            if tail is not None and head is not None and not (
-                    head.startswith(tail) or tail.startswith(head)):
+            if (
+                tail is not None
+                and head is not None
+                and not (head.startswith(tail) or tail.startswith(head))
+            ):
                 yield (depth, grad_next, grad)  # leafs, yield for depth-check
                 continue
 
@@ -186,11 +191,13 @@ class Builder:
         # -------- end node --------
 
 
-def plot_model(model: nn.Module,
-               *input_shapes: tuple[int, ...],
-               device='cpu',
-               nesting: bool = True,
-               variables: bool = False):
+def plot_model(
+    model: nn.Module,
+    *input_shapes: tuple[int, ...],
+    device='cpu',
+    nesting: bool = True,
+    variables: bool = False,
+):
     """Produces Graphviz representation of PyTorch autograd graph
 
     Blue nodes are the Variables that require grad, orange are Tensors
@@ -203,9 +210,7 @@ def plot_model(model: nn.Module,
     params = model.state_dict(prefix='root.', keep_vars=True)
     hk = Builder(
         {id_(var) for var in inputs},
-        {
-            id_(var): name for name, var in params.items()
-        },
+        {id_(var): name for name, var in params.items()},
         nesting=nesting,
         variables=variables,
     )
@@ -213,7 +218,9 @@ def plot_model(model: nn.Module,
         for name, m in model.named_modules(prefix='root'):
             stack.callback(
                 m.register_forward_pre_hook(
-                    functools.partial(hk.forward_pre, name)).remove)
+                    functools.partial(hk.forward_pre, name)
+                ).remove
+            )
             stack.callback(m.register_forward_hook(hk.forward).remove)
         model(*inputs)
 
@@ -225,7 +232,7 @@ def plot_model(model: nn.Module,
     dot.format = 'svg'
 
     size_min = 12
-    scale_factor = .15
+    scale_factor = 0.15
     size = max(size_min, len(dot.body) * scale_factor)
 
     dot.graph_attr.update(size=f'{size},{size}')
