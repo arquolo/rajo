@@ -1,6 +1,9 @@
 __all__ = [
-    'Chain', 'DualStageTransform', 'ImageTransform', 'MaskTransform',
-    'Transform'
+    'Chain',
+    'DualStageTransform',
+    'ImageTransform',
+    'MaskTransform',
+    'Transform',
 ]
 
 from collections.abc import Iterable
@@ -36,8 +39,10 @@ class Transform(Protocol):
         if not isinstance(rhs, Transform):
             return NotImplemented
         ts = (
-            t_ for t in (self, rhs)
-            for t_ in (t.transforms if isinstance(t, _OneOf) else [t]))
+            t_
+            for t in (self, rhs)
+            for t_ in (t.transforms if isinstance(t, _OneOf) else [t])
+        )
         return _OneOf(*ts)
 
 
@@ -67,8 +72,9 @@ class MaskTransform(_SingleTransform):
 class DualStageTransform(Transform):
     _keys = frozenset[str]({'image', 'mask'})
 
-    def prepare(self, rng: np.random.Generator, /,
-                **data) -> dict[str, Any] | None:
+    def prepare(
+        self, rng: np.random.Generator, /, **data
+    ) -> dict[str, Any] | None:
         return {}
 
     def image(self, image: np.ndarray, **params) -> np.ndarray:
@@ -87,7 +93,8 @@ class DualStageTransform(Transform):
             return data
         return {
             key: getattr(self, key)(value, **params)
-            for key, value in data.items() if value is not None
+            for key, value in data.items()
+            if value is not None
         }
 
 
@@ -109,8 +116,9 @@ class _Compose(Transform):
 
     def _repr(self, words: Iterable[str]) -> str:
         if parts := ',\n'.join(words):
-            parts = '\n'.join((f'    {p}' if p.strip() else p)
-                              for p in parts.splitlines(True))
+            parts = '\n'.join(
+                f'    {p}' if p.strip() else p for p in parts.splitlines(True)
+            )
             parts = f'\n{parts}\n'
         return f'{type(self).__name__}({parts})'
 
@@ -118,8 +126,13 @@ class _Compose(Transform):
 @final
 class Chain(_Compose):
     def __init__(self, *transforms: Transform):
-        self.transforms = *(t for t in transforms
-                            if not isinstance(t, _Maybe) or t.prob > 0),
+        self.transforms = (
+            *(
+                t
+                for t in transforms
+                if not isinstance(t, _Maybe) or t.prob > 0
+            ),
+        )
 
     def __repr__(self) -> str:
         return self._repr(f'{t!r}' for t in self.transforms)
@@ -137,14 +150,18 @@ class _OneOf(_Compose):
 
     def __init__(self, *transforms: Transform):
         probs, self.transforms = zip(
-            *((t.prob, t) if isinstance(t, _Maybe) else (1.0, _Maybe(t))
-              for t in transforms))
+            *(
+                (t.prob, t) if isinstance(t, _Maybe) else (1.0, _Maybe(t))
+                for t in transforms
+            )
+        )
         self.probs = np.array(probs)
         self.probs /= self.probs.sum()
 
     def __repr__(self) -> str:
-        words = (f'{p:.2f} * {t.func}'
-                 for p, t in zip(self.probs, self.transforms))
+        words = (
+            f'{p:.2f} * {t.func}' for p, t in zip(self.probs, self.transforms)
+        )
         return self._repr(words)
 
     def __call__(self, rng: np.random.Generator, /, **data) -> dict[str, Any]:

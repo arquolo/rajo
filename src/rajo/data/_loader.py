@@ -11,11 +11,22 @@ from typing import Any, Protocol
 
 import numpy as np
 import torch
-from glow import (buffered, chunked, get_executor, map_n, max_cpu_count,
-                  roundrobin)
+from glow import (
+    buffered,
+    chunked,
+    get_executor,
+    map_n,
+    max_cpu_count,
+    roundrobin,
+)
 from torch import Tensor
-from torch.utils.data import (Dataset, IterableDataset, RandomSampler, Sampler,
-                              SequentialSampler)
+from torch.utils.data import (
+    Dataset,
+    IterableDataset,
+    RandomSampler,
+    Sampler,
+    SequentialSampler,
+)
 from torch.utils.data._utils import worker as torch_worker
 
 from ..distributed import get_ddp_info
@@ -69,8 +80,7 @@ class _PinnableLoader(_Loader):
 
 
 class _CollateFn(Protocol):
-    def __call__(self, __items: tuple) -> Any:
-        ...
+    def __call__(self, __items: tuple) -> Any: ...
 
 
 @dataclass(frozen=True)
@@ -101,11 +111,13 @@ class _BatchedLoader(_PinnableLoader):
 
 
 class _BatchableLoader(_PinnableLoader):
-    def batch(self,
-              batch_size: int,
-              collate_fn: _CollateFn | None = None,
-              drop_last: bool = False,
-              daemon: bool = False) -> _BatchedLoader:
+    def batch(
+        self,
+        batch_size: int,
+        collate_fn: _CollateFn | None = None,
+        drop_last: bool = False,
+        daemon: bool = False,
+    ) -> _BatchedLoader:
         """
         Groups data into batches.
 
@@ -124,11 +136,13 @@ class _BatchableLoader(_PinnableLoader):
         #   replace(self, finalize=None),
         #   batch_size, collate_fn, drop_last,
         # )
-        return _BatchedLoader(self, batch_size, collate_fn, drop_last,
-                              int(daemon))
+        return _BatchedLoader(
+            self, batch_size, collate_fn, drop_last, int(daemon)
+        )
 
-    def shuffle(self,
-                sampler: Sampler | SamplerLike | None) -> '_BatchableLoader':
+    def shuffle(
+        self, sampler: Sampler | SamplerLike | None
+    ) -> '_BatchableLoader':
         """
         Reshuffle data at every epoch.
 
@@ -154,8 +168,9 @@ class _MapLoader(_BatchableLoader):
         assert isinstance(self.sampler, Sized)
         return len(self.sampler)
 
-    def shuffle(self,
-                sampler: Sampler | SamplerLike | bool | None) -> '_MapLoader':
+    def shuffle(
+        self, sampler: Sampler | SamplerLike | bool | None
+    ) -> '_MapLoader':
         if not sampler:
             return self
 
@@ -182,7 +197,8 @@ class _MapMultiLoader(_MapLoader):
             self.sampler,
             max_workers=max_workers,
             chunksize=self.chunksize,
-            mp=self.mp)
+            mp=self.mp,
+        )
 
 
 # -------------------- loader for iterable-style datasets --------------------
@@ -232,9 +248,9 @@ class _IterableMultiLoader(_IterableLoader):
 # ----------------------------- factory function -----------------------------
 
 
-def get_loader(dataset: Dataset,
-               max_workers: int | None = 0,
-               mp: bool = False) -> _BatchableLoader:
+def get_loader(
+    dataset: Dataset, max_workers: int | None = 0, mp: bool = False
+) -> _BatchableLoader:
     """
     Data loader. Combines a dataset and a sampler (via shuffle method), and
     provides an iterable over the given dataset.
@@ -265,13 +281,15 @@ def get_loader(dataset: Dataset,
             warnings.warn(
                 'For iterable-style datasets multithreading is not supported. '
                 'Setting max_workers to 0',
-                stacklevel=2)
+                stacklevel=2,
+            )
             max_workers = 0
 
         if (ddp := get_ddp_info()) and ddp.world > 1:
             raise ValueError(
                 'For iterable-style datasets distributed use is not '
-                'supported')
+                'supported'
+            )
 
         if not max_workers:
             return _IterableLoader(dataset)
@@ -300,8 +318,9 @@ def convert(x):  # noqa: PLR0911
         return x
 
     if tp.__module__ == 'numpy' and not isinstance(x, np.str_ | np.bytes_):
-        if (isinstance(x, np.ndarray)
-                and _NP_STR_DTYPE_PATTERN.search(x.dtype.str)):
+        if isinstance(x, np.ndarray) and _NP_STR_DTYPE_PATTERN.search(
+            x.dtype.str
+        ):
             return x
         return torch.as_tensor(x)
 
@@ -324,7 +343,8 @@ def collate(batch):
 
     if _HINT is not None:  # Fast alternative to functools.singledispatch
         fn = _HINT.get(tp) or next(
-            (fn for tp_, fn in _HINT.items() if isinstance(x0, tp_)), None)
+            (fn for tp_, fn in _HINT.items() if isinstance(x0, tp_)), None
+        )
         if fn is not None:
             return fn(batch)
 
@@ -388,4 +408,5 @@ _HINT: dict[type | tuple[type, ...], Callable] = {
 _NP_STR_DTYPE_PATTERN = re.compile('[SOUa]')
 _COLLATE_ERROR_MSG = (
     'default_collate: batch must contain tensors, numpy arrays, numbers, '
-    'dicts or lists; found {}')
+    'dicts or lists; found {}'
+)

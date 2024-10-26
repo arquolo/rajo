@@ -15,6 +15,7 @@ from torch import Tensor, nn
 
 class Show(nn.Module):
     """Shows contents of tensors during forward pass"""
+
     nsigmas = 2
     weight: Tensor
     bias: Tensor
@@ -25,7 +26,7 @@ class Show(nn.Module):
         self.colored = colored
 
         weight = torch.tensor(128 / self.nsigmas)
-        bias = torch.tensor(128.)
+        bias = torch.tensor(128.0)
         self.register_buffer('weight', weight, persistent=False)
         self.register_buffer('bias', bias, persistent=False)
 
@@ -42,7 +43,7 @@ class Show(nn.Module):
 
         if self.colored:
             groups = c // 3
-            image = image[:, :groups * 3, :, :]
+            image = image[:, : groups * 3, :, :]
             image = rearrange(image, 'b (g c) h w -> (b h) (g w) c', c=3)
         else:
             image = rearrange(image, 'b c h w -> (b h) (c w)')

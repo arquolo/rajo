@@ -1,6 +1,9 @@
 __all__ = [
-    'LazyBias2d', 'LazyBlurPool2d', 'LazyConv2dWs', 'LazyGroupNorm',
-    'LazyLayerNorm'
+    'LazyBias2d',
+    'LazyBlurPool2d',
+    'LazyConv2dWs',
+    'LazyGroupNorm',
+    'LazyLayerNorm',
 ]
 
 from torch import Size, Tensor, nn
@@ -62,10 +65,9 @@ class LazyLayerNorm(_LazyBase, nn.LayerNorm):
     weight: UninitializedParameter  # type: ignore
     bias: UninitializedParameter  # type: ignore
 
-    def __init__(self,
-                 rank: int = 1,
-                 eps: float = 1e-5,
-                 elementwise_affine: bool = True) -> None:
+    def __init__(
+        self, rank: int = 1, eps: float = 1e-5, elementwise_affine: bool = True
+    ) -> None:
         super().__init__([0] * rank, eps, False)
         self.elementwise_affine = elementwise_affine
         if self.elementwise_affine:
@@ -74,7 +76,7 @@ class LazyLayerNorm(_LazyBase, nn.LayerNorm):
 
     def materialize(self, shape: Size) -> None:
         rank = len(self.normalized_shape)
-        self.normalized_shape = *shape[-rank:],
+        self.normalized_shape = tuple(shape[-rank:])
         if self.elementwise_affine:
             self.weight.materialize(self.normalized_shape)
             self.bias.materialize(self.normalized_shape)
@@ -86,10 +88,9 @@ class LazyGroupNorm(_LazyBase, nn.GroupNorm):
     weight: UninitializedParameter  # type: ignore
     bias: UninitializedParameter  # type: ignore
 
-    def __init__(self,
-                 num_groups: int,
-                 eps: float = 1e-5,
-                 affine: bool = True) -> None:
+    def __init__(
+        self, num_groups: int, eps: float = 1e-5, affine: bool = True
+    ) -> None:
         super().__init__(num_groups, 0, eps, False)
         self.affine = affine
         if self.affine:
@@ -99,8 +100,8 @@ class LazyGroupNorm(_LazyBase, nn.GroupNorm):
     def materialize(self, shape: Size) -> None:
         self.num_channels = shape[1]
         if self.affine:
-            self.weight.materialize((self.num_channels, ))
-            self.bias.materialize((self.num_channels, ))
+            self.weight.materialize((self.num_channels,))
+            self.bias.materialize((self.num_channels,))
 
 
 class LazyConv2dWs(nn.LazyConv2d):
@@ -112,11 +113,13 @@ class LazyBlurPool2d(_LazyBase, BlurPool2d):
 
     weight: UninitializedBuffer
 
-    def __init__(self,
-                 kernel: int = 4,
-                 stride: int = 2,
-                 padding: int = 1,
-                 padding_mode: str = 'reflect') -> None:
+    def __init__(
+        self,
+        kernel: int = 4,
+        stride: int = 2,
+        padding: int = 1,
+        padding_mode: str = 'reflect',
+    ) -> None:
         super().__init__(0, kernel, stride, padding, padding_mode)
         self.weight = UninitializedBuffer()
 

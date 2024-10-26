@@ -27,12 +27,12 @@ class Scores:
 
 
 class MetricFn(Protocol):
-    def __call__(self, pred, true) -> Tensor:
-        ...
+    def __call__(self, pred, true) -> Tensor: ...
 
 
 class Metric(ABC):
     """Base class for metric"""
+
     @abstractmethod
     def __call__(self, pred, true) -> Tensor:
         raise NotImplementedError
@@ -44,15 +44,14 @@ class Metric(ABC):
 
 class Lambda(Metric):
     """Wraps arbitary loss function to metric"""
+
     fn: MetricFn
 
     @overload
-    def __init__(self, fn: Callable, name: str):
-        ...
+    def __init__(self, fn: Callable, name: str): ...
 
     @overload
-    def __init__(self, fn: MetricFn, name: None = ...):
-        ...
+    def __init__(self, fn: MetricFn, name: None = ...): ...
 
     def __init__(self, fn, name=None):
         self.fn = fn
@@ -67,6 +66,7 @@ class Lambda(Metric):
 
 class Staged(Metric):
     """Makes metric a "producer": applies multiple functions to its "state" """
+
     def __init__(self, **funcs: Callable[[Tensor], Tensor]):
         self.funcs = funcs
 
@@ -88,7 +88,7 @@ def _batch_averaged(
 
 @coroutine
 def compose(*fns: Metric) -> Generator[Scores, Sequence[Tensor], None]:
-    updates = *(_batch_averaged(fn) for fn in fns),
+    updates = tuple(_batch_averaged(fn) for fn in fns)
     args = yield Scores()
     while True:
         scores: dict[str, Tensor] = {}

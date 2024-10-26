@@ -1,8 +1,24 @@
 __all__ = [
-    'Trainer', 'data', 'detach_', 'device', 'dump_to_onnx', 'eval_', 'frozen',
-    'get_gpu_capability', 'get_gpu_memory_info', 'get_grads', 'get_loader',
-    'inference', 'materialize', 'metrics', 'nn', 'optim', 'param_count',
-    'plot_model', 'profile', 'sched'
+    'Trainer',
+    'data',
+    'detach_',
+    'device',
+    'dump_to_onnx',
+    'eval_',
+    'frozen',
+    'get_gpu_capability',
+    'get_gpu_memory_info',
+    'get_grads',
+    'get_loader',
+    'inference',
+    'materialize',
+    'metrics',
+    'nn',
+    'optim',
+    'param_count',
+    'plot_model',
+    'profile',
+    'sched',
 ]
 
 from importlib import import_module
@@ -13,8 +29,16 @@ from ._lazy import materialize
 from ._trainer import Trainer
 from .amp import get_grads
 from .data._loader import get_loader
-from .util import (detach_, device, dump_to_onnx, eval_, frozen, inference,
-                   param_count, profile)
+from .util import (
+    detach_,
+    device,
+    dump_to_onnx,
+    eval_,
+    frozen,
+    inference,
+    param_count,
+    profile,
+)
 
 _exports = {
     '.plot': ['plot_model'],

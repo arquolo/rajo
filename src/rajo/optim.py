@@ -4,7 +4,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import InitVar, asdict, dataclass, field
 from math import sqrt
-from typing import Any, NamedTuple, final
+from typing import Any, NamedTuple, final, overload
 
 import torch
 from torch import Tensor
@@ -41,7 +41,8 @@ class SingleGroupOptimizer(Optimizer):
     @property
     def defaults(self) -> dict:
         return {
-            k: v for k, v in asdict(self).items()
+            k: v
+            for k, v in asdict(self).items()
             if k not in SingleGroupOptimizer.__dataclass_fields__
         }
 
@@ -101,9 +102,9 @@ class SingleGroupOptimizer(Optimizer):
     @final
     @torch.no_grad()
     def load_state_dict(self, state: dict):
-        self.__dict__.update({
-            k: v for k, v in state.items() if k not in ('grads', 'states')
-        })
+        self.__dict__.update(
+            {k: v for k, v in state.items() if k not in ('grads', 'states')}
+        )
         for p, g in zip(self.states, state['grads']):
             if g is None:
                 p.grad = None
@@ -116,8 +117,9 @@ class SingleGroupOptimizer(Optimizer):
             dst[:] = src
 
     def _state_groups(self) -> Iterable[_GradState]:
-        r: dict[tuple,
-                _GradState] = defaultdict(lambda: _GradState([], [], []))
+        r: dict[tuple, _GradState] = defaultdict(
+            lambda: _GradState([], [], [])
+        )
         for p, ts in self.states.items():
             if p.grad is None:
                 continue
@@ -128,6 +130,12 @@ class SingleGroupOptimizer(Optimizer):
             s.bufs.append(ts)
 
         return r.values()
+
+    @overload
+    def step(self, closure: None = ...) -> None: ...
+
+    @overload
+    def step(self, closure: Callable[[], float]) -> float: ...
 
     @final
     @torch.no_grad()
@@ -144,16 +152,24 @@ class SingleGroupOptimizer(Optimizer):
         return loss
 
     @final
-    def zero_init(self, params: Sequence[Parameter],
-                  bufs: Sequence[list[Tensor]],
-                  num_bufs: int) -> Sequence[Sequence[Tensor]]:
+    def zero_init(
+        self,
+        params: Sequence[Parameter],
+        bufs: Sequence[list[Tensor]],
+        num_bufs: int,
+    ) -> Sequence[Sequence[Tensor]]:
         for p, bufs_ in zip(params, bufs):
             if not bufs_:
                 bufs_.extend(torch.zeros_like(p) for _ in range(num_bufs))
-        return *zip(*bufs),
+        return [*zip(*bufs)]
 
-    def device_step(self, params: Sequence[Parameter], grads: Sequence[Tensor],
-                    bufs: Sequence[list[Tensor]], **kwargs):
+    def device_step(
+        self,
+        params: Sequence[Parameter],
+        grads: Sequence[Tensor],
+        bufs: Sequence[list[Tensor]],
+        **kwargs,
+    ):
         raise NotImplementedError
 
 
@@ -168,6 +184,7 @@ class SGDW(SingleGroupOptimizer):
 
     Fixes weight decay rule of `torch.optim.SGD`
     """
+
     lr: float = 0.003
     momentum: float = 0
     dampening: float = 0
@@ -178,13 +195,18 @@ class SGDW(SingleGroupOptimizer):
         assert self.lr >= 0
         assert self.momentum >= 0
         assert self.weight_decay >= 0
-        assert (not self.nesterov
-                or (self.momentum > 0 and self.dampening == 0)
-                ), 'Nesterov momentum requires a momentum and zero dampening'
+        assert not self.nesterov or (
+            self.momentum > 0 and self.dampening == 0
+        ), 'Nesterov momentum requires a momentum and zero dampening'
         super().__post_init__(params)
 
-    def device_step(self, params: Sequence[Parameter], grads: Sequence[Tensor],
-                    bufs: Sequence[list[Tensor]], **kwargs):
+    def device_step(
+        self,
+        params: Sequence[Parameter],
+        grads: Sequence[Tensor],
+        bufs: Sequence[list[Tensor]],
+        **kwargs,
+    ):
         if self.weight_decay != 0:
             _foreach.mul_(params, scalar=1 - self.lr * self.weight_decay)
 
@@ -219,6 +241,7 @@ class AdamW(SingleGroupOptimizer):
 
     Similar to `torch.optim.AdamW`
     """
+
     lr: float = 1e-3
     betas: tuple[float, float] = (0.9, 0.999)
     eps: float = 1e-8
@@ -229,24 +252,27 @@ class AdamW(SingleGroupOptimizer):
         assert self.lr >= 0.0
         assert self.eps >= 0.0
         for i, beta in enumerate(self.betas):
-            assert 0.0 <= beta < 1.0, \
-                f'Invalid beta at index {i}: {self.betas}'
+            assert (
+                0.0 <= beta < 1.0
+            ), f'Invalid beta at index {i}: {self.betas}'
         super().__post_init__(params)
 
     def common_step_args(self) -> dict:
         beta1, beta2 = self.betas
-        bias_correction1 = 1 - beta1 ** self._step
-        bias_correction2 = 1 - beta2 ** self._step
+        bias_correction1 = 1 - beta1**self._step
+        bias_correction2 = 1 - beta2**self._step
         step_size = self.lr * sqrt(bias_correction2) / bias_correction1
         return {'step_size': step_size}
 
-    def device_step(self,
-                    params: Sequence[Parameter],
-                    grads: Sequence[Tensor],
-                    bufs: Sequence[list[Tensor]],
-                    *,
-                    step_size=1,
-                    **kwargs):
+    def device_step(
+        self,
+        params: Sequence[Parameter],
+        grads: Sequence[Tensor],
+        bufs: Sequence[list[Tensor]],
+        *,
+        step_size=1,
+        **kwargs,
+    ):
         if self.amsgrad:
             avg, avg_sq, max_avg_sq = self.zero_init(params, bufs, 3)
         else:
@@ -283,6 +309,7 @@ class RAdam(SingleGroupOptimizer):
 
     Fixes weight decay rule of `torch.optim.RAdam`
     """
+
     lr: float = 1e-3
     betas: tuple[float, float] = (0.9, 0.999)
     weight_decay: float = 0
@@ -294,14 +321,14 @@ class RAdam(SingleGroupOptimizer):
         beta1, beta2 = self.betas
         n_sma_max = 2 / (1 - beta2) - 1
 
-        bias_correction1 = 1 - beta1 ** self._step
+        bias_correction1 = 1 - beta1**self._step
         step_size = self.lr / bias_correction1
 
-        bias_correction2 = 1 - beta2 ** self._step
+        bias_correction2 = 1 - beta2**self._step
         if not self.radam:
             return {'step_size': step_size * sqrt(bias_correction2)}
 
-        beta2_t = beta2 ** self._step
+        beta2_t = beta2**self._step
         n_sma = n_sma_max - 2 * self._step * beta2_t / bias_correction2
 
         # more conservative since it's an approximated value
@@ -313,14 +340,16 @@ class RAdam(SingleGroupOptimizer):
         k_max = (n_sma_max - 4) * (n_sma_max - 2) / n_sma_max
         return {'step_size': step_size * sqrt(bias_correction2 * k / k_max)}
 
-    def device_step(self,
-                    params: Sequence[Parameter],
-                    grads: Sequence[Tensor],
-                    bufs: Sequence[list[Tensor]],
-                    *,
-                    is_tractable=True,
-                    step_size=1,
-                    **kwargs):
+    def device_step(
+        self,
+        params: Sequence[Parameter],
+        grads: Sequence[Tensor],
+        bufs: Sequence[list[Tensor]],
+        *,
+        is_tractable=True,
+        step_size=1,
+        **kwargs,
+    ):
         avg, avg_sq = self.zero_init(params, bufs, 2)
         beta1, beta2 = self.betas
 
@@ -350,13 +379,19 @@ class Lion(SingleGroupOptimizer):
     .. _reference implementation:
         https://github.com/google/automl/tree/master/lion
     """
+
     lr: float = 1e-4
     betas: tuple[float, float] = (0.9, 0.99)
     weight_decay: float = 0.0
 
-    def device_step(self, params: Sequence[Parameter], grads: Sequence[Tensor],
-                    bufs: Sequence[list[Tensor]], **kwargs):
-        avg, = self.zero_init(params, bufs, 1)
+    def device_step(
+        self,
+        params: Sequence[Parameter],
+        grads: Sequence[Tensor],
+        bufs: Sequence[list[Tensor]],
+        **kwargs,
+    ):
+        (avg,) = self.zero_init(params, bufs, 1)
         beta1, beta2 = self.betas
 
         if self.weight_decay != 0:

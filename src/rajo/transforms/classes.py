@@ -1,7 +1,17 @@
 __all__ = [
-    'BitFlipNoise', 'ChannelMix', 'ChannelShuffle', 'CutOut', 'DegradeJpeg',
-    'DegradeQuality', 'Elastic', 'FlipAxis', 'HsvShift', 'LumaJitter',
-    'MaskDropout', 'MultiNoise', 'WarpAffine'
+    'BitFlipNoise',
+    'ChannelMix',
+    'ChannelShuffle',
+    'CutOut',
+    'DegradeJpeg',
+    'DegradeQuality',
+    'Elastic',
+    'FlipAxis',
+    'HsvShift',
+    'LumaJitter',
+    'MaskDropout',
+    'MultiNoise',
+    'WarpAffine',
 ]
 
 from dataclasses import InitVar, dataclass, field
@@ -18,8 +28,9 @@ from .core import DualStageTransform, ImageTransform, MaskTransform
 
 
 class _LutTransform(ImageTransform):
-    def get_lut(self,
-                rng: np.random.Generator) -> np.ndarray | list[np.ndarray]:
+    def get_lut(
+        self, rng: np.random.Generator
+    ) -> np.ndarray | list[np.ndarray]:
         raise NotImplementedError
 
     def image(self, image: np.ndarray, rng: np.random.Generator) -> np.ndarray:
@@ -39,6 +50,7 @@ class _LutTransform(ImageTransform):
 
 class AddNoise(ImageTransform):
     """Add uniform[-strength ... +strength] to each item"""
+
     def __init__(self, strength: float = 0.2) -> None:
         self.strength = int(strength * 255)
 
@@ -49,7 +61,8 @@ class AddNoise(ImageTransform):
         assert image.dtype == np.uint8
 
         res = rng.integers(
-            -self.strength, self.strength, size=image.shape, dtype='i2')
+            -self.strength, self.strength, size=image.shape, dtype='i2'
+        )
         res += image
 
         return res.clip(0, 255).astype('u1')
@@ -57,6 +70,7 @@ class AddNoise(ImageTransform):
 
 class MultiNoise(ImageTransform):
     """Multiply uniform[1 - strength ... 1 + strength] to each item"""
+
     def __init__(self, strength: float = 0.5) -> None:
         self.low = max(0, 1 - strength)
         self.high = 1 + strength
@@ -143,6 +157,7 @@ class LumaJitter(_LutTransform):
 @dataclass
 class GammaJitter(_LutTransform):
     """Alters gamma from [1/(1+gamma) ... 1+gamma]"""
+
     gamma: float = 0.2
 
     def __post_init__(self):
@@ -189,8 +204,9 @@ class DegradeJpeg(ImageTransform):
 
     def image(self, image: np.ndarray, rng: np.random.Generator) -> np.ndarray:
         quality = int(rng.integers(*self.quality))
-        _, buf = cv2.imencode('.jpg', image,
-                              (cv2.IMWRITE_JPEG_QUALITY, quality))
+        _, buf = cv2.imencode(
+            '.jpg', image, (cv2.IMWRITE_JPEG_QUALITY, quality)
+        )
         return cv2.imdecode(buf, cv2.IMREAD_UNCHANGED).reshape(image.shape)
 
 
@@ -228,7 +244,8 @@ class MaskDropout(MaskTransform):
 
     def mask(self, mask: np.ndarray, rng: np.random.Generator) -> np.ndarray:
         return F.mask_dropout(
-            mask, rng, alpha=self.alpha, ignore_index=self.ignore_index)
+            mask, rng, alpha=self.alpha, ignore_index=self.ignore_index
+        )
 
 
 # --------------------------------- geometry ---------------------------------
@@ -298,11 +315,9 @@ class Elastic(DualStageTransform):
     def __post_init__(self, inter: str):
         self._inter = getattr(cv2, f'INTER_{inter}')
 
-    def prepare(self,
-                rng: np.random.Generator,
-                /,
-                image: np.ndarray | None = None,
-                **_) -> dict[str, Any] | None:
+    def prepare(
+        self, rng: np.random.Generator, /, image: np.ndarray | None = None, **_
+    ) -> dict[str, Any] | None:
         if image is None:
             return None
         offsets = rng.random((2, *image.shape[:2]), dtype='f4')
@@ -318,7 +333,8 @@ class Elastic(DualStageTransform):
     def _apply(self, image: np.ndarray, inter: int, **params) -> np.ndarray:
         map_x, map_y = params['offsets']
         return cv2.remap(
-            image, map_x, map_y, inter, borderMode=cv2.BORDER_REFLECT_101)
+            image, map_x, map_y, inter, borderMode=cv2.BORDER_REFLECT_101
+        )
 
     def image(self, image: np.ndarray, **params) -> np.ndarray:
         return self._apply(image, self._inter, **params)

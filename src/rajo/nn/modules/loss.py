@@ -1,6 +1,9 @@
 __all__ = [
-    'BCEWithLogitsLoss', 'CrossEntropyLoss', 'DiceLoss', 'LossWeighted',
-    'MultiheadLoss'
+    'BCEWithLogitsLoss',
+    'CrossEntropyLoss',
+    'DiceLoss',
+    'LossWeighted',
+    'MultiheadLoss',
 ]
 
 from collections.abc import Sequence
@@ -18,9 +21,11 @@ class _Weighted(nn.Module):
     gain: Tensor | None
     reduction: Final[Literal['none', 'mean', 'sum']]
 
-    def __init__(self,
-                 weight: Sequence[float] | Tensor | None = None,
-                 reduction: Literal['none', 'mean', 'sum'] = 'mean') -> None:
+    def __init__(
+        self,
+        weight: Sequence[float] | Tensor | None = None,
+        reduction: Literal['none', 'mean', 'sum'] = 'mean',
+    ) -> None:
         super().__init__()
 
         if reduction not in {'none', 'mean', 'sum'}:
@@ -61,6 +66,7 @@ class MultiheadLoss(_Weighted):
     - outputs: `(B, C1 + ... + Cn, ...)`,
     - targets: `(B, N, ...)` or same as outputs
     """
+
     head_dims: Final[list[int]]
     num_heads: Final[int]
     channels: Final[int]
@@ -81,8 +87,10 @@ class MultiheadLoss(_Weighted):
         self.channels = sum(self.head_dims)
 
         if weight is not None and self.num_heads != len(weight):
-            raise ValueError('Weight does not match head count. '
-                             f'{len(weight)} != {self.num_heads}')
+            raise ValueError(
+                'Weight does not match head count. '
+                f'{len(weight)} != {self.num_heads}'
+            )
 
         super().__init__(weight, reduction=reduction)
         self.base_loss = base_loss
@@ -99,22 +107,29 @@ class MultiheadLoss(_Weighted):
             line = f'{line}, {s}'
         return line
 
-    def forward(self, outputs: Tensor,
-                targets: Tensor) -> Tensor | list[Tensor]:
-        assert outputs.shape[0] == targets.shape[0], (
-            'outputs/targets differ in batch size')
-        assert outputs.shape[1] == self.channels, (
-            'output channel count does not match head dims')
+    def forward(
+        self, outputs: Tensor, targets: Tensor
+    ) -> Tensor | list[Tensor]:
+        assert (
+            outputs.shape[0] == targets.shape[0]
+        ), 'outputs/targets differ in batch size'
+        assert (
+            outputs.shape[1] == self.channels
+        ), 'output channel count does not match head dims'
         assert targets.shape[1] in (self.channels, self.num_heads), (
             'target channel count should match output, '
-            'or be equal to head count')
-        assert outputs.shape[2:] == targets.shape[2:], (
-            'outputs/targets differ in sample size')
+            'or be equal to head count'
+        )
+        assert (
+            outputs.shape[2:] == targets.shape[2:]
+        ), 'outputs/targets differ in sample size'
 
         o_parts = outputs.split(self.head_dims, dim=1)
         t_parts = (
-            targets.unbind(dim=1) if targets.shape[1] == self.num_heads else
-            targets.split(self.head_dims, dim=1))
+            targets.unbind(dim=1)
+            if targets.shape[1] == self.num_heads
+            else targets.split(self.head_dims, dim=1)
+        )
 
         tensors = [self.base_loss(o, t) for o, t in zip(o_parts, t_parts)]
 
@@ -122,7 +137,7 @@ class MultiheadLoss(_Weighted):
             # If false `renorm` and true `unit_sum`, `support` is always 1
             sizes = [F.support(o, t) for o, t in zip(o_parts, t_parts)]
             support = torch.stack(sizes)
-            support, = all_reduce(support, mean=True)
+            (support,) = all_reduce(support, mean=True)
 
             if not self.renorm:  # Scale to world, not head size
                 support = support.mean().broadcast_to(support.shape)
@@ -136,19 +151,24 @@ class MultiheadLoss(_Weighted):
 
 
 class LossWeighted(_Weighted):
-    def __init__(self,
-                 losses: Sequence[nn.Module],
-                 weight: Sequence[float] | None = None,
-                 reduction: Literal['none', 'mean', 'sum'] = 'mean') -> None:
+    def __init__(
+        self,
+        losses: Sequence[nn.Module],
+        weight: Sequence[float] | None = None,
+        reduction: Literal['none', 'mean', 'sum'] = 'mean',
+    ) -> None:
         if weight is not None and len(losses) != len(weight):
-            raise ValueError('Weight does not match loss count. '
-                             f'{len(weight)} != {len(losses)}')
+            raise ValueError(
+                'Weight does not match loss count. '
+                f'{len(weight)} != {len(losses)}'
+            )
 
         super().__init__(weight, reduction=reduction)
         self.bases = nn.ModuleList(losses)
 
-    def forward(self, outputs: Tensor,
-                targets: Tensor) -> Tensor | list[Tensor]:
+    def forward(
+        self, outputs: Tensor, targets: Tensor
+    ) -> Tensor | list[Tensor]:
         tensors = [m(outputs, targets) for m in self.bases]
         return self._to_output(tensors)
 
@@ -158,27 +178,37 @@ class BCEWithLogitsLoss(nn.BCEWithLogitsLoss):
     Drop-in replacement of `torch.nn.BCEWithLogitsLoss`
     with support of label smoothing.
     """
+
     smooth: Tensor | None
     end: Tensor
 
-    def __init__(self,
-                 weight: Tensor | None = None,
-                 reduction: Literal['none', 'mean', 'sum'] = 'mean',
-                 pos_weight: Tensor | None = None,
-                 label_smoothing: float = 0) -> None:
+    def __init__(
+        self,
+        weight: Tensor | None = None,
+        reduction: Literal['none', 'mean', 'sum'] = 'mean',
+        pos_weight: Tensor | None = None,
+        label_smoothing: float = 0,
+    ) -> None:
         super().__init__(weight, reduction=reduction, pos_weight=pos_weight)
 
         # Y(LS=0) -> Y, Y(LS=1) -> 1/2
         # Y <- lerp(Y, 1/2, weight=LS)
         self.register_buffer(
             'label_smoothing',
-            torch.as_tensor(label_smoothing, torch.float)
-            if label_smoothing else None)
+            (
+                torch.as_tensor(label_smoothing, torch.float)
+                if label_smoothing
+                else None
+            ),
+        )
         self.register_buffer('end', torch.tensor(0.5))
 
     def extra_repr(self) -> str:
-        return ('' if self.smooth is None else
-                f'label_smoothing={self.smooth.item()}')
+        return (
+            ''
+            if self.smooth is None
+            else f'label_smoothing={self.smooth.item()}'
+        )
 
     def forward(self, outputs: Tensor, targets: Tensor) -> Tensor:
         # Target to float
@@ -202,22 +232,26 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
 
     For global loss use `dist.all_reduce(loss, op=dist.ReduceOp.MEAN)`.
     """
-    def __init__(self,
-                 weight: Tensor | None = None,
-                 ignore_index: int = -100,
-                 label_smoothing: float = 0) -> None:
+
+    def __init__(
+        self,
+        weight: Tensor | None = None,
+        ignore_index: int = -100,
+        label_smoothing: float = 0,
+    ) -> None:
         super().__init__(
             weight,
             ignore_index=ignore_index,
             reduction='mean',
-            label_smoothing=label_smoothing)
+            label_smoothing=label_smoothing,
+        )
 
     def forward(self, outputs: Tensor, targets: Tensor) -> Tensor:
         loss = super().forward(outputs, targets)
 
         # NOTE: support is computed for current rank
         support = F.support(outputs, targets)
-        total_support, = all_reduce(support, mean=True)
+        (total_support,) = all_reduce(support, mean=True)
         if total_support is support:
             return loss
 
@@ -229,6 +263,7 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
 
 class DiceLoss(nn.Module):
     """DDP-aware Dice loss. Returns same value on all replicas"""
+
     log: Final[bool]
 
     def __init__(self, log: bool = False):

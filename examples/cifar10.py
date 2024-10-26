@@ -47,7 +47,8 @@ def make_model_new(init=16):
         ksize = stride + pad * 2
         return nn.Sequential(
             nn.Conv2d(
-                cin, cout, ksize, stride, pad, groups=groups, bias=False),
+                cin, cout, ksize, stride, pad, groups=groups, bias=False
+            ),
             nn.BatchNorm2d(cout),
             nn.ReLU(inplace=True),
         )
@@ -61,7 +62,8 @@ def make_model_new(init=16):
                 conv(cout * 2, pad=2, groups=cout * 2),
                 conv(cout * 2, cout)[:-1],
                 tail=nn.ReLU(),
-                skip=0.1),
+                skip=0.1,
+            ),
         )
 
     return nn.Sequential(
@@ -78,28 +80,36 @@ def make_model_new(init=16):
 # parse args
 
 parser = argparse.ArgumentParser(
-    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter
+)
 parser.add_argument(
-    'root', type=pathlib.Path, help='location of cifar10/ folder')
+    'root', type=pathlib.Path, help='location of cifar10/ folder'
+)
 parser.add_argument('--batch-size', type=int, default=4, help='train batch')
 parser.add_argument('--epochs', type=int, default=12, help='count of epochs')
 parser.add_argument('--steps-per-epoch', type=int, help='steps per epoch')
 parser.add_argument('--width', type=int, default=32, help='width of network')
 parser.add_argument(
-    '--fp16', action='store_true', help='enable mixed precision mode')
+    '--fp16', action='store_true', help='enable mixed precision mode'
+)
 parser.add_argument('--plot', action='store_true', help='enable plot')
 
 args = parser.parse_args()
 
-epoch_len = (8000 // args.batch_size
-             if args.steps_per_epoch is None else args.steps_per_epoch)
+epoch_len = (
+    8000 // args.batch_size
+    if args.steps_per_epoch is None
+    else args.steps_per_epoch
+)
 sample_size = args.epochs * epoch_len * args.batch_size
 
-tft = tfs.Compose([
-    tfs.RandomCrop(32, padding=4),
-    tfs.RandomHorizontalFlip(),
-    tfs.ToTensor(),
-])
+tft = tfs.Compose(
+    [
+        tfs.RandomCrop(32, padding=4),
+        tfs.RandomHorizontalFlip(),
+        tfs.ToTensor(),
+    ]
+)
 ds = CIFAR10(args.root / 'cifar10', transform=tft, download=True)
 ds_val = CIFAR10(args.root / 'cifar10', transform=tfs.ToTensor(), train=False)
 
@@ -107,7 +117,8 @@ loader = gnn.make_loader(
     ds,
     args.batch_size,
     sampler=RandomSampler(ds, True, sample_size),
-    multiprocessing=False)
+    multiprocessing=False,
+)
 val_loader = gnn.make_loader(ds_val, 100, multiprocessing=False)
 
 # net = make_model_default()
@@ -122,7 +133,8 @@ metrics = [
     m.Confusion(acc=m.accuracy, kappa=m.kappa),
 ]
 stepper = gnn.Stepper(
-    net, opt, criterion, metrics, device=DEVICE, fp16=args.fp16)
+    net, opt, criterion, metrics, device=DEVICE, fp16=args.fp16
+)
 
 history = defaultdict[str, list](list)
 with tqdm(total=epoch_len * args.epochs, desc='train') as pbar:
@@ -137,7 +149,8 @@ with tqdm(total=epoch_len * args.epochs, desc='train') as pbar:
         for tag, values in scores.items():
             history[tag].append(values)
         scalars_fmt = ', '.join(
-            f'{t}: {{:.3f}}/{{:.3f}}'.format(*vs) for t, vs in scores.items())
+            f'{t}: {{:.3f}}/{{:.3f}}'.format(*vs) for t, vs in scores.items()
+        )
         print(f'[{i:03d}] {scalars_fmt}')
 
 if args.plot:
@@ -146,8 +159,10 @@ if args.plot:
         ax = fig.add_subplot(1, len(history), i)
         ax.legend(ax.plot(values_), ['train', 'val'])
         ax.set_title(tag)
-        ax.set_ylim([
-            int(min(x for xs in values_ for x in xs)),
-            int(max(x for xs in values_ for x in xs) + 0.999)
-        ])
+        ax.set_ylim(
+            [
+                int(min(x for xs in values_ for x in xs)),
+                int(max(x for xs in values_ for x in xs) + 0.999),
+            ]
+        )
     plt.show()

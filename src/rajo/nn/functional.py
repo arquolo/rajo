@@ -28,13 +28,15 @@ def upscale2d(x: Tensor, stride: int = 2) -> Tensor:
     return F.interpolate(x, size, mode='bilinear', align_corners=True)
 
 
-def conv2d_ws(x: Tensor,
-              weight: Tensor,
-              bias: Tensor | None = None,
-              stride: _size | int = 1,
-              padding: _size | int | str = 0,
-              dilation: _size | int = 1,
-              groups: int = 1):
+def conv2d_ws(
+    x: Tensor,
+    weight: Tensor,
+    bias: Tensor | None = None,
+    stride: _size | int = 1,
+    padding: _size | int | str = 0,
+    dilation: _size | int = 1,
+    groups: int = 1,
+):
     weight = F.layer_norm(weight, weight.shape[1:], eps=1e-5)
     return F.conv2d(x, weight, bias, stride, padding, dilation, groups)
 
@@ -46,13 +48,14 @@ def standartize_conv_weights(model: nn.Module) -> None:
             continue
         shape = m.weight.shape
         parametrize.register_parametrization(
-            m, 'weight', nn.LayerNorm(shape[1:], elementwise_affine=False))
+            m, 'weight', nn.LayerNorm(shape[1:], elementwise_affine=False)
+        )
 
 
 def outer_mul(*ts: Tensor) -> Tensor:
     """Outer product of series of 1D-tensors"""
     assert all(t.ndim == 1 for t in ts)
-    letters = ascii_lowercase[:len(ts)]
+    letters = ascii_lowercase[: len(ts)]
     return torch.einsum(','.join(letters) + ' -> ' + letters, *ts)
 
 

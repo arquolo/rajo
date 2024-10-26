@@ -1,8 +1,17 @@
 from . import roc
 from .base import Lambda, Metric, Scores, Staged, compose
-from .confusion import (Confusion, SoftConfusion, accuracy, accuracy_balanced,
-                        dice, iou, kappa, kappa_quadratic_weighted,
-                        sensitivity, specificity)
+from .confusion import (
+    Confusion,
+    SoftConfusion,
+    accuracy,
+    accuracy_balanced,
+    dice,
+    iou,
+    kappa,
+    kappa_quadratic_weighted,
+    sensitivity,
+    specificity,
+)
 from .func import class_ids, class_probs
 from .raw import auroc, average_precision
 

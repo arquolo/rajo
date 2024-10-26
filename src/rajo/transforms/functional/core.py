@@ -4,14 +4,17 @@ import cv2
 import numpy as np
 
 
-def grid_shuffle(image: np.ndarray,
-                 mask: np.ndarray | None = None,
-                 *,
-                 rng: np.random.Generator,
-                 grid=4) -> tuple[np.ndarray, ...]:
+def grid_shuffle(
+    image: np.ndarray,
+    mask: np.ndarray | None = None,
+    *,
+    rng: np.random.Generator,
+    grid=4,
+) -> tuple[np.ndarray, ...]:
     axes = (
         np.linspace(0, size, grid + 1, dtype=np.int_)
-        for size in image.shape[:2])
+        for size in image.shape[:2]
+    )
     mats = np.stack(np.meshgrid(*axes, indexing='ij'))
 
     anchors = mats[:, :-1, :-1]
@@ -39,17 +42,19 @@ def grid_shuffle(image: np.ndarray,
     for v in sources:
         new_v = np.empty_like(v)
         for (y2, x2), (y1, x1), (ys, xs) in tiles:
-            new_v[y2:y2 + ys, x2:x2 + xs] = v[y1:y1 + ys, x1:x1 + xs]
+            new_v[y2 : y2 + ys, x2 : x2 + xs] = v[y1 : y1 + ys, x1 : x1 + xs]
         results.append(new_v)
-    return *results,
+    return (*results,)
 
 
-def affine(image: np.ndarray,
-           skew: float,
-           angle: float,
-           scale: float,
-           inter: int = cv2.INTER_LINEAR,
-           border: int = cv2.BORDER_REFLECT_101) -> np.ndarray:
+def affine(
+    image: np.ndarray,
+    skew: float,
+    angle: float,
+    scale: float,
+    inter: int = cv2.INTER_LINEAR,
+    border: int = cv2.BORDER_REFLECT_101,
+) -> np.ndarray:
     center = np.array(image.shape[1::-1]) / 2
     mat = np.hstack([np.eye(2), -center[:, None]])  # move center to origin
 
@@ -64,7 +69,8 @@ def affine(image: np.ndarray,
 
     flags = inter + cv2.WARP_INVERSE_MAP
     return cv2.warpAffine(
-        image, mat, image.shape[:2], flags=flags, borderMode=border)
+        image, mat, image.shape[:2], flags=flags, borderMode=border
+    )
 
 
 def flip(image: np.ndarray, *, ud: bool, lr: bool, rot90: bool) -> np.ndarray:
@@ -77,10 +83,12 @@ def flip(image: np.ndarray, *, ud: bool, lr: bool, rot90: bool) -> np.ndarray:
     return np.ascontiguousarray(image)
 
 
-def mask_dropout(mask: np.ndarray,
-                 rng: np.random.Generator,
-                 alpha: float,
-                 ignore_index: int = -1) -> np.ndarray:
+def mask_dropout(
+    mask: np.ndarray,
+    rng: np.random.Generator,
+    alpha: float,
+    ignore_index: int = -1,
+) -> np.ndarray:
     """
     Keep occurence of each class below alpha.
     Redundant values are replaced with ignore_index.
@@ -107,10 +115,9 @@ def gamma(arr: np.ndarray, y: float) -> np.ndarray:
     return cv2.LUT(arr.ravel(), lut).reshape(arr.shape)
 
 
-def gamma_dq(arr: np.ndarray,
-             y: float,
-             rng: np.random.Generator,
-             qbits: int = 7) -> np.ndarray:
+def gamma_dq(
+    arr: np.ndarray, y: float, rng: np.random.Generator, qbits: int = 7
+) -> np.ndarray:
     """Apply gamma Y to array with dequantization"""
     assert arr.dtype == 'u1'
     assert y > 0

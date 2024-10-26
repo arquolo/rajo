@@ -24,10 +24,12 @@ class MultiheadProb(nn.Module):
     heads: Final[list[int]]
     split: Final[bool]
 
-    def __init__(self,
-                 heads: Iterable[int],
-                 binary: bool | None = None,
-                 split: bool = False) -> None:
+    def __init__(
+        self,
+        heads: Iterable[int],
+        binary: bool | None = None,
+        split: bool = False,
+    ) -> None:
         super().__init__()
         self.heads = [*heads]
         self.split = split
@@ -47,18 +49,21 @@ class MultiheadAdapter(nn.Module):
     eps: Final[float]
     from_logits: Final[bool]
 
-    def __init__(self,
-                 c: int,
-                 heads: Sequence[Sequence[Iterable[int]]],
-                 eps: float = 1e-7,
-                 from_logits: bool = False) -> None:
+    def __init__(
+        self,
+        c: int,
+        heads: Sequence[Sequence[Iterable[int]]],
+        eps: float = 1e-7,
+        from_logits: bool = False,
+    ) -> None:
         super().__init__()
         self.head_dims = [len(head) for head in heads]
 
         total_labels = sum(self.head_dims)
         weight = torch.zeros(total_labels, c)
-        for row, cs in zip(weight.unbind(),
-                           (cs for head in heads for cs in head)):
+        for row, cs in zip(
+            weight.unbind(), (cs for head in heads for cs in head)
+        ):
             for c_ in cs:
                 row[c_] = 1
         self.register_buffer('weight', weight)
@@ -106,9 +111,9 @@ class MultiheadMaxAdapter(nn.ModuleList):
         return torch.stack([m(x) for m in self], dim=1)
 
 
-def _linear_nd(x: Tensor,
-               weight: Tensor,
-               bias: Tensor | None = None) -> Tensor:
+def _linear_nd(
+    x: Tensor, weight: Tensor, bias: Tensor | None = None
+) -> Tensor:
     assert x.shape[1] == weight.shape[1]
     assert bias is None or bias.shape[0] == weight.shape[0]
 

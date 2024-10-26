@@ -13,8 +13,8 @@ try:
 except ImportError:
     get_gpu_capability = None  # type: ignore[assignment]
 
-_MIN_SCALE = 2.0 ** -16
-_MAX_SCALE = 2.0 ** +16
+_MIN_SCALE = 2.0**-16
+_MAX_SCALE = 2.0**+16
 _PATIENCE = 2000
 
 _MIN_FP16_CUDA_CAPABILITY = (7, 0)
@@ -59,9 +59,11 @@ def _fp16_is_definitely_not_available() -> bool:
 class Grads:
     _num_backwards: int = 0
 
-    def __init__(self,
-                 opt: optim.Optimizer,
-                 sched: optim.lr_scheduler._LRScheduler | None = None):
+    def __init__(
+        self,
+        opt: optim.Optimizer,
+        sched: optim.lr_scheduler._LRScheduler | None = None,
+    ) -> None:
         self._opt = opt
         self._sched = sched
 
@@ -120,10 +122,13 @@ class _ScalingGrads(Grads):
       thus making whole sequence of N fwd-bwd calls (N = grad steps)
       gone to nowhere.
     """
-    def __init__(self,
-                 opt: optim.Optimizer,
-                 sched: optim.lr_scheduler._LRScheduler | None = None,
-                 scale: float = _MAX_SCALE):
+
+    def __init__(
+        self,
+        opt: optim.Optimizer,
+        sched: optim.lr_scheduler._LRScheduler | None = None,
+        scale: float = _MAX_SCALE,
+    ) -> None:
         super().__init__(opt, sched)
         self._scaler = torch.cuda.amp.grad_scaler.GradScaler(scale)
 
@@ -146,8 +151,9 @@ class _ScalingGrads(Grads):
             return
 
         if _PRIVATE:
-            steps, self._steps = self._steps, getattr(self._opt, '_step_count',
-                                                      _NAN)
+            steps, self._steps = self._steps, getattr(
+                self._opt, '_step_count', _NAN
+            )
             if steps == self._steps:  # No step done
                 return
         else:
@@ -219,12 +225,15 @@ class _GenericScalingGrads(Grads):
     This scaler takes care of consecutive bwd calls, averaging gradients
     over time.
     """
-    def __init__(self,
-                 opt: optim.Optimizer,
-                 sched: optim.lr_scheduler._LRScheduler | None = None,
-                 max_retries: int = 1,
-                 scale: float = _MAX_SCALE,
-                 min_scale: float | None = _MIN_SCALE):
+
+    def __init__(
+        self,
+        opt: optim.Optimizer,
+        sched: optim.lr_scheduler._LRScheduler | None = None,
+        max_retries: int = 1,
+        scale: float = _MAX_SCALE,
+        min_scale: float | None = _MIN_SCALE,
+    ):
         self._max_retries = max_retries
         self._min_scale = min_scale
 
@@ -232,15 +241,18 @@ class _GenericScalingGrads(Grads):
         self._scale = torch.empty(1).fill_(scale)
 
         self._params: set[nn.Parameter] = {
-            p for param_group in opt.param_groups
-            for p in param_group['params'] if p.requires_grad
+            p
+            for param_group in opt.param_groups
+            for p in param_group['params']
+            if p.requires_grad
         }
         super().__init__(opt, sched)
 
     def _unscale_grads_(self) -> tuple[Tensor, ...]:
         devs = set[torch.device]()
-        grad_groups: dict[tuple[torch.device, torch.dtype],
-                          list[Tensor]] = defaultdict(list)
+        grad_groups: dict[tuple[torch.device, torch.dtype], list[Tensor]] = (
+            defaultdict(list)
+        )
         for p in self._params:
             if p.grad is None:
                 continue
@@ -258,22 +270,26 @@ class _GenericScalingGrads(Grads):
         # Unscale grads and update infs
         for (dev, _), grads in grad_groups.items():
             torch._amp_foreach_non_finite_check_and_unscale_(
-                grads, infs[dev], inv_scale.to(dev, non_blocking=True))
-        return *infs.values(),
+                grads, infs[dev], inv_scale.to(dev, non_blocking=True)
+            )
+        return tuple(infs.values())
 
     def _update_(self, infs: Iterable[Tensor]) -> None:
         # Collect infs from all devices
         found_inf, *rest = (
-            inf.to(self._scale.device, non_blocking=True) for inf in infs)
+            inf.to(self._scale.device, non_blocking=True) for inf in infs
+        )
         for inf in rest:
             found_inf += inf
 
-        torch._amp_update_scale_(self._scale, self._growth_tracker, found_inf,
-                                 2.0, 0.5, _PATIENCE)
+        torch._amp_update_scale_(
+            self._scale, self._growth_tracker, found_inf, 2.0, 0.5, _PATIENCE
+        )
 
     def backward(self, tensor: Tensor) -> None:
         self._growth_tracker = self._growth_tracker.to(
-            tensor.device, non_blocking=True)
+            tensor.device, non_blocking=True
+        )
         self._scale = self._scale.to(tensor.device, non_blocking=True)
 
         # Borrow grads, and zero source
@@ -293,8 +309,10 @@ class _GenericScalingGrads(Grads):
 
                 # Second round (or complete failure), zero grads to fill again
                 self.zero_grad()
-                print('Got inf in grads,',
-                      'try another scale' if remaining else 'skip step')
+                print(
+                    'Got inf in grads,',
+                    'try another scale' if remaining else 'skip step',
+                )
 
         # ! Optional cpu-gpu sync
         if self._min_scale is None or self._scale.item() > self._min_scale:
@@ -306,7 +324,7 @@ class _GenericScalingGrads(Grads):
             'max_retries': self._max_retries,
             'min_scale': self._min_scale,
             'scale': self._scale.item(),
-            'growth_tracker': self._growth_tracker.item()
+            'growth_tracker': self._growth_tracker.item(),
         }
 
     def load_state_dict(self, state: dict):
@@ -316,15 +334,19 @@ class _GenericScalingGrads(Grads):
         self._growth_tracker.fill_(state['growth_tracker'])
         self._scale.fill_(state['scale'])
         self._params = {
-            p for param_group in self._opt.param_groups
-            for p in param_group['params'] if p.requires_grad
+            p
+            for param_group in self._opt.param_groups
+            for p in param_group['params']
+            if p.requires_grad
         }
 
 
-def get_grads(opt: optim.Optimizer,
-              sched: optim.lr_scheduler._LRScheduler | None = None,
-              dtype: torch.dtype | None = None,
-              max_retries: int = 1) -> Grads:
+def get_grads(
+    opt: optim.Optimizer,
+    sched: optim.lr_scheduler._LRScheduler | None = None,
+    dtype: torch.dtype | None = None,
+    max_retries: int = 1,
+) -> Grads:
     """Get gradients context with specified precision
 
     Parameters:

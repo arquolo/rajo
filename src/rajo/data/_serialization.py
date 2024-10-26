@@ -13,6 +13,7 @@ class SharedList[T](Sequence[T]):
     """
     Mapping that holds its values in shared memory via `torch.Tensor`.
     """
+
     __slots__ = ('_buf', '_addr')
 
     def __init__(self, items: Iterable[T]) -> None:
@@ -21,12 +22,10 @@ class SharedList[T](Sequence[T]):
         self._addr = torch.as_tensor([0] + [len(t) for t in ts]).cumsum(0)
 
     @overload
-    def __getitem__(self, index: int, /) -> T:
-        ...
+    def __getitem__(self, index: int, /) -> T: ...
 
     @overload
-    def __getitem__(self, index: slice, /) -> list[T]:
-        ...
+    def __getitem__(self, index: slice, /) -> list[T]: ...
 
     def __getitem__(self, index: int | slice, /) -> T | list[T]:
         len_ = len(self)
@@ -36,7 +35,7 @@ class SharedList[T](Sequence[T]):
         if not -len_ <= index < len_:
             raise IndexError(f'{type(self).__name__} index out of range')
         index %= len_
-        lo, hi = self._addr[index:index + 2].tolist()
+        lo, hi = self._addr[index : index + 2].tolist()
         return _deserialize(self._buf[lo:hi])
 
     def __iter__(self) -> Iterator[T]:
@@ -55,6 +54,7 @@ class SharedDict[K, V](Mapping[K, V]):
     """
     Mapping that holds its values in shared memory via `torch.Tensor`.
     """
+
     __slots__ = ('_keys', '_buf', '_addr')
 
     def __init__(self, obj: Mapping[K, V]) -> None:

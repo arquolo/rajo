@@ -8,27 +8,28 @@ from torch.optim import Optimizer, lr_scheduler
 
 
 @overload
-def rsqrt(optimizer: Optimizer,
-          *,
-          total_steps: int,
-          warmup: int = 100) -> lr_scheduler.LRScheduler:
-    ...
+def rsqrt(
+    optimizer: Optimizer, *, total_steps: int, warmup: int = 100
+) -> lr_scheduler.LRScheduler: ...
 
 
 @overload
-def rsqrt(optimizer: Optimizer,
-          *,
-          epochs: int,
-          steps_per_epoch: int,
-          warmup: int = 100) -> lr_scheduler.LRScheduler:
-    ...
+def rsqrt(
+    optimizer: Optimizer,
+    *,
+    epochs: int,
+    steps_per_epoch: int,
+    warmup: int = 100,
+) -> lr_scheduler.LRScheduler: ...
 
 
-def rsqrt(optimizer: Optimizer,
-          total_steps=None,
-          epochs=None,
-          steps_per_epoch=None,
-          warmup: int = 100) -> lr_scheduler.LRScheduler:
+def rsqrt(
+    optimizer: Optimizer,
+    total_steps=None,
+    epochs=None,
+    steps_per_epoch=None,
+    warmup: int = 100,
+) -> lr_scheduler.LRScheduler:
     if total_steps is not None:
         assert total_steps > 0
     elif epochs is not None and steps_per_epoch is not None:
@@ -36,11 +37,14 @@ def rsqrt(optimizer: Optimizer,
         assert steps_per_epoch > 0
         total_steps = epochs * steps_per_epoch
     else:
-        raise ValueError('You must define either total_steps OR '
-                         '(epochs AND steps_per_epoch)')
+        raise ValueError(
+            'You must define either total_steps OR '
+            '(epochs AND steps_per_epoch)'
+        )
 
-    return lr_scheduler.LambdaLR(optimizer,
-                                 partial(_get_rsqrt_lr, warmup, total_steps))
+    return lr_scheduler.LambdaLR(
+        optimizer, partial(_get_rsqrt_lr, warmup, total_steps)
+    )
 
 
 def _get_rsqrt_lr(step: int, total: int, i: int) -> float:

@@ -26,7 +26,9 @@ class Stage:
     def __post_init__(self, dtype: torch.dtype | None):
         self._autocast: Any = (
             torch.autocast(self.device.type, dtype)
-            if dtype in (torch.float16, torch.bfloat16) else nullcontext())
+            if dtype in (torch.float16, torch.bfloat16)
+            else nullcontext()
+        )
 
     def _move(self, x: Tensor) -> Tensor:
         return x.to(self.device, non_blocking=True)
@@ -72,15 +74,17 @@ class TrainStage(Stage):
 
 
 class Trainer:
-    def __init__(self,
-                 net: nn.Module,
-                 opt: torch.optim.Optimizer,
-                 criterion: Callable[..., Tensor],
-                 metrics: Iterable[m.Metric],
-                 device: torch.device,
-                 sched: torch.optim.lr_scheduler._LRScheduler | None = None,
-                 dtype: torch.dtype | None = None,
-                 grad_steps: int = 1) -> None:
+    def __init__(
+        self,
+        net: nn.Module,
+        opt: torch.optim.Optimizer,
+        criterion: Callable[..., Tensor],
+        metrics: Iterable[m.Metric],
+        device: torch.device,
+        sched: torch.optim.lr_scheduler._LRScheduler | None = None,
+        dtype: torch.dtype | None = None,
+        grad_steps: int = 1,
+    ) -> None:
         self.metrics = [m.Lambda(criterion, name='loss'), *metrics]
 
         grads = get_grads(opt, sched, dtype, max_retries=0)
@@ -106,10 +110,9 @@ class Trainer:
     def eval(self, loader: _Loader, pbar: tqdm) -> m.Scores:
         return self._run(self.stages[1], loader, pbar)
 
-    def run(self,
-            train_loader: _Loader,
-            eval_loader: _Loader,
-            epochs: int = 1):
+    def run(
+        self, train_loader: _Loader, eval_loader: _Loader, epochs: int = 1
+    ):
         for i in tqdm(range(1, 1 + epochs), smoothing=0):
             with tqdm(train_loader, desc='train', leave=False) as bar:
                 tscalars = self.train(bar, bar).scalars
@@ -122,9 +125,10 @@ class Trainer:
 
             # TODO: those lines should be moved outside into loggers
             line = ','.join(
-                f'{tag}: ' + '/'.join(f'{s[tag]:.3f}'
-                                      for s in (tscalars, vscalars))
-                for tag in tags)
+                f'{tag}: '
+                + '/'.join(f'{s[tag]:.3f}' for s in (tscalars, vscalars))
+                for tag in tags
+            )
             print(f'[{i:03d}] {line}')
 
 
