@@ -9,9 +9,9 @@ __all__ = [
 
 import pickle
 from collections.abc import Callable
-from functools import partial, update_wrapper
+from functools import update_wrapper
 from multiprocessing.reduction import ForkingPickler
-from typing import Any, Concatenate, NamedTuple
+from typing import Concatenate, NamedTuple
 
 import torch
 import torch.cuda
@@ -19,7 +19,7 @@ import torch.distributed as dist
 from torch import Tensor, nn
 from torch.multiprocessing.spawn import start_processes
 
-type _TrainFn[**P] = Callable[Concatenate[nn.Module, P], Any]
+type _TrainFn[**P] = Callable[Concatenate[nn.Module, P], None]
 
 # -------------------------------- primitives --------------------------------
 
@@ -68,42 +68,28 @@ def auto_model(net: nn.Module, sync_bn: bool = True) -> nn.Module:
         return nn.parallel.DistributedDataParallel(net, device_ids=[ddp.rank])
 
     net.cuda()
-    return (
-        nn.parallel.DataParallel(net) if torch.cuda.device_count() > 1 else net
-    )
+    if torch.cuda.device_count() > 1:
+        return nn.parallel.DataParallel(net)
+    return net
 
 
-class _AutoDdp[**P]:
+class _DdpWorker[**P]:
     def __init__(
         self,
+        ngpus: int,
         train_fn: _TrainFn[P],
         net: nn.Module,
+        /,
         *args: P.args,
         **kwargs: P.kwargs,
     ) -> None:
+        self.ngpus = ngpus
         self.train_fn = train_fn
         self.net = net
         self.args = args
         self.kwargs = kwargs
-        self.ngpus = torch.cuda.device_count()
 
-        if self.ngpus == 1:
-            self._worker(None)
-            return
-
-        # ! Not tested
-        # * Actually, here we can use loky.ProcessPoolExecutor, like this:
-        # from glow import map_n
-        # ngpus = self.ngpus
-        # jobs = map_n(self._worker, range(ngpus), max_workers=ngpus, mp=True)
-        # list(jobs)
-        # * Left as safe measure
-        start_processes(self._worker, nprocs=self.ngpus)
-
-    def _worker(self, rank: int | None) -> None:
-        if rank is None:
-            return self.train_fn(self.net, *self.args, **self.kwargs)
-
+    def __call__(self, rank: int) -> None:
         dist.init_process_group('nccl', world_size=self.ngpus, rank=rank)
         try:
             self.train_fn(auto_model(self.net), *self.args, **self.kwargs)
@@ -111,8 +97,24 @@ class _AutoDdp[**P]:
             dist.destroy_process_group()
 
 
-def auto_ddp[**P](train_fn: _TrainFn[P]) -> _TrainFn[P]:
-    return update_wrapper(partial(_AutoDdp, train_fn), train_fn)
+def auto_ddp[**P](fn: _TrainFn[P], /) -> _TrainFn[P]:
+    ngpus = torch.cuda.device_count()
+    if ngpus == 1:
+        return fn
+
+    def wrapper(net: nn.Module, *args: P.args, **kwargs: P.kwargs) -> None:
+        a = _DdpWorker(ngpus, fn, net, *args, **kwargs)
+
+        # ! Not tested
+        # * Actually, here we can use loky.ProcessPoolExecutor, like this:
+        # from glow import map_n
+        # ngpus = self.ngpus
+        # jobs = map_n(a, range(ngpus), max_workers=ngpus, mp=True)
+        # list(jobs)
+        # * Left as safe measure
+        start_processes(a, nprocs=ngpus)
+
+    return update_wrapper(wrapper, fn)
 
 
 def broadcast_call[**P, R](fn: Callable[P, R], /) -> Callable[P, R]:
