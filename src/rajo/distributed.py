@@ -44,15 +44,27 @@ def barrier(rank: int | None = None) -> None:
 def all_reduce(*tensors: Tensor, mean: bool = False) -> tuple[Tensor, ...]:
     """Reduce tensors across all machines"""
     if (ddp := get_ddp_info()) and ddp.world > 1:
+        tensors = _AllReduceAsyncSum.apply(*tensors)  # type: ignore
+        if mean:
+            tensors = tuple(t / ddp.world for t in tensors)
+    return tensors
+
+
+class _AllReduceAsyncSum(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, *tensors: Tensor) -> tuple[Tensor, ...]:
         tensors = tuple(t.clone() for t in tensors)
 
         ops = [dist.all_reduce(t, async_op=True) for t in tensors]
         for op in ops:
+            assert op is not None
             op.wait()
 
-        if mean:
-            tensors = tuple(t / ddp.world for t in tensors)
-    return tensors
+        return tensors
+
+    @staticmethod
+    def backward(ctx, *grad_output: Tensor) -> tuple[Tensor, ...]:
+        return _AllReduceAsyncSum.apply(*grad_output)  # type: ignore
 
 
 # --------------------------------- wrappers ---------------------------------

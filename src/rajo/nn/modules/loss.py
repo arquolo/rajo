@@ -134,14 +134,22 @@ class MultiheadLoss(_Weighted):
         tensors = [self.base_loss(o, t) for o, t in zip(o_parts, t_parts)]
 
         if self.renorm or not self.unit_sum:
-            # If false `renorm` and true `unit_sum`, `support` is always 1
+            # Either renorm is ON or unit_sum is OFF (or both).
+            # Get actual support from data
             sizes = [F.support(o, t) for o, t in zip(o_parts, t_parts)]
             support = torch.stack(sizes)
             (support,) = all_reduce(support, mean=True)
 
             if not self.renorm:  # Scale to world, not head size
+                # Implies `unit_sum` also OFF.
+                # Batch total gradient depends on count of non-ignored samples.
+                # DDP-aware version of `sum` reduction.
                 support = support.mean().broadcast_to(support.shape)
+
             if self.unit_sum:  # Normalize to unit sum, preserves grad norm
+                # Implies `renorm` also ON.
+                # Each batch will get the same total gradient.
+                # DDP-aware version of `mean` reduction.
                 support /= support.mean()
 
             # Scale each head
