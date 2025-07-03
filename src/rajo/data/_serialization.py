@@ -14,7 +14,7 @@ class SharedList[T](Sequence[T]):
     Mapping that holds its values in shared memory via `torch.Tensor`.
     """
 
-    __slots__ = ('_buf', '_addr')
+    __slots__ = ('_addr', '_buf')
 
     def __init__(self, items: Iterable[T]) -> None:
         ts = [_serialize(x) for x in items]
@@ -55,7 +55,7 @@ class SharedDict[K, V](Mapping[K, V]):
     Mapping that holds its values in shared memory via `torch.Tensor`.
     """
 
-    __slots__ = ('_keys', '_buf', '_addr')
+    __slots__ = ('_keys', '_list')
 
     def __init__(self, obj: Mapping[K, V]) -> None:
         self._keys = {k: i for i, k in enumerate(obj)}
