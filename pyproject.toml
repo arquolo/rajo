@@ -7,7 +7,7 @@ only-packages = true
 
 [project]
 name = "rajo"
-version = "0.3.0"
+version = "0.3.1"
 description = "Pytorch training utilities and models"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -55,9 +55,9 @@ dev-core = [
     "flake8-pyproject",
     "flake8-simplify",
     "isort",
-    "mypy~=1.15",
+    "mypy~=1.16",
     "pytest~=8.0",
-    "ruff~=0.11.6",
+    "ruff~=0.12.2",
     "yapf~=0.43.0",
 ]
 dev = [
