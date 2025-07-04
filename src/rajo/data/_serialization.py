@@ -77,7 +77,7 @@ class SharedDict[K, V](Mapping[K, V]):
 
 def _serialize(v) -> Tensor:
     buf = pickle.dumps(v, protocol=-1)
-    return torch.from_numpy(np.frombuffer(buf, dtype='u1').copy())
+    return torch.from_numpy(np.frombuffer(buf, dtype='B').copy())
 
 
 def _deserialize(x: Tensor):

@@ -11,7 +11,7 @@ from torch import Tensor, nn
 class Prob(nn.Module):
     binary: Final[bool | None]
 
-    def __init__(self, binary: bool | None = None):
+    def __init__(self, binary: bool | None = None) -> None:
         super().__init__()
         self.binary = binary
 

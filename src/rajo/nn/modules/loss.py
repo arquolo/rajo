@@ -81,7 +81,7 @@ class MultiheadLoss(_Weighted):
         reduction: Literal['none', 'mean', 'sum'] = 'mean',
         renorm: bool = False,
         unit_sum: bool = True,
-    ):
+    ) -> None:
         self.head_dims = [*head_dims]
         self.num_heads = len(self.head_dims)
         self.channels = sum(self.head_dims)
@@ -274,7 +274,7 @@ class DiceLoss(nn.Module):
 
     log: Final[bool]
 
-    def __init__(self, log: bool = False):
+    def __init__(self, log: bool = False) -> None:
         super().__init__()
         self.log = log
 

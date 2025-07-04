@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence, Sized
 from dataclasses import dataclass, replace
 from functools import partial
 from itertools import islice
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import numpy as np
 import torch
@@ -49,8 +49,8 @@ class _Loader(Protocol):
 # ------------------------------ memory pinning ------------------------------
 
 
-def pin_memory(data):
-    def _pin_memory(x):
+def pin_memory[T](data: T) -> T:
+    def _pin_memory(x: Tensor) -> Tensor:
         return x.pin_memory()
 
     return _apply(data, _pin_memory)
@@ -212,7 +212,7 @@ class _Worker:
     seed: int | None = None
 
     def __iter__(self) -> Iterator:
-        torch_worker._worker_info = self  # type: ignore[assignment]
+        torch_worker._worker_info = cast(torch_worker.WorkerInfo, self)
         try:
             yield from self.dataset
         finally:
@@ -337,7 +337,7 @@ def convert(x):  # noqa: PLR0911
     return x
 
 
-def collate(batch):
+def collate(batch: Sequence):
     x0 = batch[0]
     tp = type(x0)
 
@@ -361,14 +361,14 @@ def collate(batch):
     raise TypeError(_COLLATE_ERROR_MSG.format(tp))
 
 
-def _apply_type(tp, x):
+def _apply_type[T, T2](tp: Callable[[T2], T], x: T2) -> T | T2:
     try:
         return tp(x)
     except TypeError:
         return x
 
 
-def _collate_tensor(batch: Sequence[Tensor]):
+def _collate_tensor(batch: Sequence[Tensor]) -> Tensor:
     x = batch[0]
     out = None
     if torch_worker.get_worker_info() is not None:
@@ -381,7 +381,7 @@ def _collate_tensor(batch: Sequence[Tensor]):
     return torch.stack([*batch], out=out)
 
 
-def _collate_ndarray(batch: Sequence[np.ndarray]):
+def _collate_ndarray(batch: Sequence[np.ndarray]) -> Tensor:
     x = batch[0]
     if _NP_STR_DTYPE_PATTERN.search(x.dtype.str):
         raise TypeError(_COLLATE_ERROR_MSG.format(x.dtype))
@@ -389,7 +389,7 @@ def _collate_ndarray(batch: Sequence[np.ndarray]):
     return collate([torch.as_tensor(x) for x in batch])
 
 
-def _nop(batch):
+def _nop[T](batch: T) -> T:
     return batch
 
 

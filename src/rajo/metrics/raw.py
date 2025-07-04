@@ -2,7 +2,8 @@
 
 __all__ = ['accuracy', 'auroc', 'average_precision', 'dice_']
 
-from typing import Literal
+from dataclasses import dataclass
+from typing import Literal, Protocol
 
 import torch
 from torch import Tensor
@@ -71,10 +72,19 @@ def _rankdata(ten: Tensor) -> Tensor:
     return 0.5 * (count[dense] + count[dense - 1] + 1)
 
 
-def _binary_metric(fn):
+class _BinaryOp(Protocol):
+    def __call__(self, y_pred: Tensor, y: Tensor, /) -> Tensor: ...
+
+
+@dataclass(frozen=True, slots=True)
+class _BinaryMetric:
     """Applies specified function only on probabilities of indexed class"""
 
-    def call(y_pred: Tensor, y: Tensor, /, *, index: int = 0) -> Tensor:
+    fn: _BinaryOp
+
+    def __call__(
+        self, y_pred: Tensor, y: Tensor, /, *, index: int = 0
+    ) -> Tensor:
         y_pred, y = class_probs(y_pred, y)
 
         yc_pred = (
@@ -84,12 +94,10 @@ def _binary_metric(fn):
         )
         yc = y == index
 
-        return fn(yc_pred.view(-1), yc.view(-1))
-
-    return call
+        return self.fn(yc_pred.view(-1), yc.view(-1))
 
 
-@_binary_metric
+@_BinaryMetric
 def auroc(y_pred: Tensor, y: Tensor, /) -> Tensor:
     n = y.numel()
     n_pos = y.sum()
@@ -99,7 +107,7 @@ def auroc(y_pred: Tensor, y: Tensor, /) -> Tensor:
     return (r[y == 1].sum() - n_pos * (n_pos + 1) // 2) / float(total)
 
 
-@_binary_metric
+@_BinaryMetric
 def average_precision(y_pred: Tensor, y: Tensor, /) -> Tensor:
     n = y.numel()
     n_pos = y.sum()

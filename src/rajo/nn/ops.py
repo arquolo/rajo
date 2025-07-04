@@ -38,7 +38,7 @@ def rgb2gray_kernel() -> Tensor:
     """
     Calculate 1x3 kernel for OpenCV's RGB to Gray transform.
     """
-    w = np.eye(3, dtype='f4')[None, :, :]  # (1 3 3)
+    w = np.eye(3, dtype='f')[None, :, :]  # (1 3 3)
     w = cv2.cvtColor(w, cv2.COLOR_RGB2GRAY)  # (1 3)
     return torch.from_numpy(w)
 

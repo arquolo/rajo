@@ -44,7 +44,7 @@ def barrier(rank: int | None = None) -> None:
 def all_reduce(*tensors: Tensor, mean: bool = False) -> tuple[Tensor, ...]:
     """Reduce tensors across all machines"""
     if (ddp := get_ddp_info()) and ddp.world > 1:
-        tensors = _AllReduceAsyncSum.apply(*tensors)  # type: ignore
+        tensors = _AllReduceAsyncSum.apply(*tensors)
         if mean:
             tensors = tuple(t / ddp.world for t in tensors)
     return tensors
@@ -64,7 +64,7 @@ class _AllReduceAsyncSum(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, *grad_output: Tensor) -> tuple[Tensor, ...]:
-        return _AllReduceAsyncSum.apply(*grad_output)  # type: ignore
+        return _AllReduceAsyncSum.apply(*grad_output)
 
 
 # --------------------------------- wrappers ---------------------------------

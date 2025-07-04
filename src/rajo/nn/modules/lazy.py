@@ -39,19 +39,20 @@ def _materialize_cls(m: lazy._LazyProtocol) -> None:
 
 class _LazyModuleMixinV2(lazy.LazyModuleMixin):
     def _lazy_load_hook(self: lazy._LazyProtocol, *args, **kwargs) -> None:
-        super()._lazy_load_hook(*args, **kwargs)
+        super()._lazy_load_hook(*args, **kwargs)  # type: ignore[safe-super]
 
-        if not self.has_uninitialized_params():  # type: ignore
+        if not self.has_uninitialized_params():  # type: ignore[attr-defined]
             _materialize_cls(self)
 
 
 class _LazyBase(_LazyModuleMixinV2):
     def reset_parameters(self) -> None:
-        if not self.has_uninitialized_params():  # type: ignore
-            super().reset_parameters()  # type: ignore
+        if not self.has_uninitialized_params():  # type: ignore[misc]
+            # Mypy doesnt like this super call in a mixin
+            super().reset_parameters()  # type: ignore[misc]
 
     def initialize_parameters(self, x: Tensor) -> None:
-        if self.has_uninitialized_params():  # type: ignore
+        if self.has_uninitialized_params():  # type: ignore[misc]
             self.materialize(x.shape)
             self.reset_parameters()
 
@@ -62,8 +63,9 @@ class _LazyBase(_LazyModuleMixinV2):
 class LazyLayerNorm(_LazyBase, nn.LayerNorm):
     cls_to_become = nn.LayerNorm
 
-    weight: UninitializedParameter  # type: ignore
-    bias: UninitializedParameter  # type: ignore
+    weight: UninitializedParameter  # type: ignore[assignment]
+    bias: UninitializedParameter  # type: ignore[assignment]
+    normalized_shape: tuple[int, ...]
 
     def __init__(
         self, rank: int = 1, eps: float = 1e-5, elementwise_affine: bool = True
@@ -85,8 +87,8 @@ class LazyLayerNorm(_LazyBase, nn.LayerNorm):
 class LazyGroupNorm(_LazyBase, nn.GroupNorm):
     cls_to_become = nn.GroupNorm
 
-    weight: UninitializedParameter  # type: ignore
-    bias: UninitializedParameter  # type: ignore
+    weight: UninitializedParameter  # type: ignore[assignment]
+    bias: UninitializedParameter  # type: ignore[assignment]
 
     def __init__(
         self, num_groups: int, eps: float = 1e-5, affine: bool = True
@@ -131,7 +133,7 @@ class LazyBlurPool2d(_LazyBase, BlurPool2d):
 class LazyBias2d(_LazyBase, Bias2d):
     cls_to_become = Bias2d
 
-    bias: UninitializedParameter  # type: ignore
+    bias: UninitializedParameter  # type: ignore[assignment]
 
     def __init__(self) -> None:
         super().__init__(0, 0, 0)

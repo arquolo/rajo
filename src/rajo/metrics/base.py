@@ -53,7 +53,7 @@ class Lambda(Metric):
     @overload
     def __init__(self, fn: MetricFn, name: None = ...): ...
 
-    def __init__(self, fn, name=None):
+    def __init__(self, fn, name=None) -> None:
         self.fn = fn
         self.name = fn.__name__ if name is None else name
 
@@ -67,7 +67,7 @@ class Lambda(Metric):
 class Staged(Metric):
     """Makes metric a "producer": applies multiple functions to its "state" """
 
-    def __init__(self, **funcs: Callable[[Tensor], Tensor]):
+    def __init__(self, **funcs: Callable[[Tensor], Tensor]) -> None:
         self.funcs = funcs
 
     def collect(self, state: Tensor) -> dict[str, Tensor]:

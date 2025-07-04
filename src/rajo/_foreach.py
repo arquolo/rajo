@@ -48,7 +48,7 @@ def addcdiv_(
     tensor2: Iterable[Tensor],
     *,
     value: Number = 1,
-):
+) -> None:
     """`self += value * tensor1 / tensor2`"""
     self = list(self)
     tensor1 = list(tensor1)
@@ -66,7 +66,7 @@ def addcmul_(
     tensor2: Iterable[Tensor],
     *,
     value: Number = 1,
-):
+) -> None:
     """`self += value * tensor1 * tensor2`"""
     self = list(self)
     tensor1 = list(tensor1)

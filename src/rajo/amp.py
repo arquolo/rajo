@@ -2,7 +2,7 @@ __all__ = ['get_grads']
 
 import warnings
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 
 import torch
@@ -70,7 +70,7 @@ class Grads:
     def zero_grad(self) -> None:
         self._opt.zero_grad()
 
-    def backward(self, tensor: Tensor):
+    def backward(self, tensor: Tensor) -> None:
         tensor.backward()
         self._num_backwards += 1
 
@@ -100,7 +100,7 @@ class Grads:
             s['scheduler'] = self._sched.state_dict()
         return s
 
-    def load_state_dict(self, state: dict):
+    def load_state_dict(self, state: dict) -> None:
         self._num_backwards = state['num_backwards']
         self._opt.load_state_dict(state['optimizer'])
         if self._sched is not None:
@@ -130,7 +130,7 @@ class _ScalingGrads(Grads):
         scale: float = _MAX_SCALE,
     ) -> None:
         super().__init__(opt, sched)
-        self._scaler = torch.cuda.amp.grad_scaler.GradScaler(scale)
+        self._scaler = torch.amp.grad_scaler.GradScaler('cuda', scale)
 
         if _PRIVATE:
             self._steps = getattr(self._opt, '_step_count', _NAN)
@@ -177,13 +177,13 @@ class _ScalingGrads(Grads):
 
 @contextmanager
 @torch.no_grad()
-def accumulating(params: Iterable[Tensor], done: int):
+def accumulating(params: Iterable[Tensor], done: int) -> Iterator[list[bool]]:
     def _borrow(p: Tensor) -> Tensor | None:
         # Save old state
         grad, p.grad = p.grad, None
         return None if grad is None else grad.detach_()
 
-    def _update(p: Tensor, grad: Tensor | None):
+    def _update(p: Tensor, grad: Tensor | None) -> None:
         # In case the fail happened, or new grad is missing, use old grad
         if inf[0] or p.grad is None:
             p.grad = grad
@@ -233,7 +233,7 @@ class _GenericScalingGrads(Grads):
         max_retries: int = 1,
         scale: float = _MAX_SCALE,
         min_scale: float | None = _MIN_SCALE,
-    ):
+    ) -> None:
         self._max_retries = max_retries
         self._min_scale = min_scale
 

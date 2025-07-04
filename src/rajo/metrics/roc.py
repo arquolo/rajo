@@ -28,7 +28,7 @@ class Confusion(Staged):
         bins: int = 64,
         normalize: bool = True,
         **funcs: Callable[[Tensor], Tensor],
-    ):
+    ) -> None:
         super().__init__(**funcs)
         self.bins = bins
         self.normalize = normalize

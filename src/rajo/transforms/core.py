@@ -100,11 +100,11 @@ class DualStageTransform(Transform):
 
 @final
 class _Maybe(Transform):
-    def __init__(self, func: Transform, prob: float = 1.0):
+    def __init__(self, func: Transform, prob: float = 1.0) -> None:
         self.func = func
         self.prob = prob
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'{self.prob:.2f} * {self.func!r}'
 
     def __call__(self, rng: np.random.Generator, /, **data) -> dict[str, Any]:
@@ -125,7 +125,7 @@ class _Compose(Transform):
 
 @final
 class Chain(_Compose):
-    def __init__(self, *transforms: Transform):
+    def __init__(self, *transforms: Transform) -> None:
         self.transforms = (
             *(
                 t
@@ -148,7 +148,7 @@ class _OneOf(_Compose):
     transforms: tuple[_Maybe, ...]
     probs: np.ndarray
 
-    def __init__(self, *transforms: Transform):
+    def __init__(self, *transforms: Transform) -> None:
         probs, self.transforms = zip(
             *(
                 (t.prob, t) if isinstance(t, _Maybe) else (1.0, _Maybe(t))

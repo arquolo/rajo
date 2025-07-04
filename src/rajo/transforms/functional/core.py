@@ -97,7 +97,7 @@ def mask_dropout(
     prob_keep = alpha / np.maximum(alpha, dist)
 
     mask = mask.astype('i8')
-    mask[rng.random(mask.shape, dtype='f4') >= prob_keep[mask]] = ignore_index
+    mask[rng.random(mask.shape, dtype='f') >= prob_keep[mask]] = ignore_index
     return mask
 
 
@@ -106,7 +106,7 @@ def gamma(arr: np.ndarray, y: float) -> np.ndarray:
     assert arr.dtype == 'u1'
     assert y > 0
 
-    lut = np.arange(256, dtype='f4')
+    lut = np.arange(256, dtype='f')
     lut /= 255
     lut **= y
     lut *= 255
@@ -124,7 +124,7 @@ def gamma_dq(
     assert 0 <= qbits < 8
     peak = 256 << qbits
 
-    lut = np.linspace(0, 1, num=257, dtype='f4')
+    lut = np.linspace(0, 1, num=257, dtype='f')
     lut **= y
     lut *= peak  # Increase precision
     lut = lut.astype('u2')

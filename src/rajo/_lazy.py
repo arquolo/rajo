@@ -8,7 +8,7 @@ from .nn.modules.lazy import _materialize_cls
 from .util import eval_
 
 
-def materialize(model: nn.Module, *args, **kwargs):
+def materialize(model: nn.Module, *args, **kwargs) -> None:
     """
     Materialize all the lazy modules within model.
     Safely call forward() if args or kwargs are passed.
@@ -24,11 +24,11 @@ def materialize(model: nn.Module, *args, **kwargs):
     uninitialized = {
         name: m
         for name, m in moduls.items()
-        if m.has_uninitialized_params()  # type: ignore
+        if m.has_uninitialized_params()  # type: ignore[misc]
     }
     if not uninitialized:  # Complete initialization without forward() call
         for m in moduls.values():
-            _materialize_cls(m)  # type: ignore
+            _materialize_cls(m)  # type: ignore[arg-type]
         return
 
     if args or kwargs:  # Initialize from forward() call

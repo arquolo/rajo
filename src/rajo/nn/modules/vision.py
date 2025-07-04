@@ -20,7 +20,7 @@ class Show(nn.Module):
     weight: Tensor
     bias: Tensor
 
-    def __init__(self, colored: bool = False):
+    def __init__(self, colored: bool = False) -> None:
         super().__init__()
         self.name = f'{type(self).__name__}_0x{id(self):x}'
         self.colored = colored

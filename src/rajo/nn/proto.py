@@ -26,7 +26,7 @@ def fc_densenet(
     depths: Iterable[int] = (4, 4),
     step: int = 12,
     bottleneck: bool = False,
-):
+) -> nn.Module:
     # TODO: define Fold/Unfold or Stash/Braid module
     # TODO: use flat structure instead of recursive nesting used currently
     """

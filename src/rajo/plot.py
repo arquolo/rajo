@@ -35,7 +35,7 @@ def flatten(xs) -> Iterator[Tensor]:
     raise TypeError(f'Unsupported argument type: {type(xs)}')
 
 
-def sized(var: Tensor):
+def sized(var: Tensor) -> str:
     if max(var.shape) == var.numel():
         return f'{tuple(var.shape)}'
     return f'{tuple(var.shape)}\n{si(var.numel())}'
@@ -79,13 +79,13 @@ class Builder:
         )
         self.stack = [root]
 
-    def _add_op_node(self, grad_id: str, grad: Node):
+    def _add_op_node(self, grad_id: str, grad: Node) -> None:
         label = type(grad).__name__.replace('Backward', '')
         if grad in self._shapes:
             label = f'{label}\n=> {tuple(self._shapes[grad])}'
         self.stack[-1].node(grad_id, label)
 
-    def _add_var_node(self, var_id: str, var: Tensor):
+    def _add_var_node(self, var_id: str, var: Tensor) -> None:
         label_ = []
         if param_name := self.params.get(var_id):
             root = self.stack[-1]
@@ -98,7 +98,7 @@ class Builder:
         color = 'yellow' if var_id in self.inputs else 'lightblue'
         root.node(var_id, label, fillcolor=color)
 
-    def _traverse_saved(self, grad_id: str, *tensors):
+    def _traverse_saved(self, grad_id: str, *tensors: Tensor) -> None:
         tensors = tuple(v for v in tensors if isinstance(v, Tensor))
         if not tensors:
             return
@@ -113,7 +113,11 @@ class Builder:
                     s.node(var_id, label, fillcolor='orange')
                 s.edge(var_id, grad_id)
 
-    def _traverse(self, grad: Node, depth: int = 0):
+    def _traverse(
+        self,
+        grad: Node | None,
+        depth: int = 0,
+    ) -> Iterator[tuple[int, Node | None, Node]]:
         if grad is None or (grad_id := id_(grad)) in self._memo:
             return
 
@@ -157,8 +161,8 @@ class Builder:
             else:
                 self.stack[0].edge(next_id, grad_id)
 
-    def _mark(self, ts):
-        edges = []
+    def _mark(self, ts) -> None:
+        edges: list[tuple[int, Node | None, Node]] = []
         for t in flatten(ts):
             if t.grad_fn is not None:
                 self._shapes[t.grad_fn] = t.shape
@@ -172,7 +176,7 @@ class Builder:
                 minlen = f'{max_depth - depth}' if self.nesting else None
                 self.stack[0].edge(id_(tail), id_(head), minlen=minlen)
 
-    def forward_pre(self, name, module, xs):
+    def forward_pre(self, name: str, module: nn.Module, xs) -> None:
         self._mark(xs)
         # -------- start node --------
         if not self.nesting:
@@ -181,7 +185,7 @@ class Builder:
         scope.attr(label=f'{name.split(".")[-1]}:{type(module).__name__}')
         self.stack.append(scope)
 
-    def forward(self, module, _, ys):
+    def forward(self, module: nn.Module, _, ys) -> None:
         self._mark(ys)
         if not self.nesting:
             return
@@ -197,7 +201,7 @@ def plot_model(
     device='cpu',
     nesting: bool = True,
     variables: bool = False,
-):
+) -> graphviz.Digraph:
     """Produces Graphviz representation of PyTorch autograd graph
 
     Blue nodes are the Variables that require grad, orange are Tensors

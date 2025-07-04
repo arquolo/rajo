@@ -117,7 +117,7 @@ class Cat(_Sequential):
         x = torch.cat(xs, 1) if len(xs) != 1 else xs[0]
         return self.seq(x)
 
-    @jit.ignore
+    @jit.ignore()
     def _cp_proxy(self, xs: list[Tensor]) -> Tensor:
         def closure(*xs: Tensor) -> Tensor:
             return self.cat([*xs])
@@ -141,7 +141,12 @@ def pre_norm(*fn: nn.Module, norm: LazyNormFn = LazyLayerNorm) -> Residual:
 
 
 class Encoder(nn.Sequential):
-    def __init__(self, stem: nn.Module, levels: nn.Module, head: nn.Module):
+    def __init__(
+        self,
+        stem: nn.Module,
+        levels: nn.Module,
+        head: nn.Module,
+    ) -> None:
         super().__init__()
         self.stem = stem
         self.levels = levels

@@ -23,7 +23,7 @@ class Stage:
     device: torch.device
     dtype: InitVar[torch.dtype | None]
 
-    def __post_init__(self, dtype: torch.dtype | None):
+    def __post_init__(self, dtype: torch.dtype | None) -> None:
         self._autocast: Any = (
             torch.autocast(self.device.type, dtype)
             if dtype in (torch.float16, torch.bfloat16)
@@ -112,7 +112,7 @@ class Trainer:
 
     def run(
         self, train_loader: _Loader, eval_loader: _Loader, epochs: int = 1
-    ):
+    ) -> None:
         for i in tqdm(range(1, 1 + epochs), smoothing=0):
             with tqdm(train_loader, desc='train', leave=False) as bar:
                 tscalars = self.train(bar, bar).scalars

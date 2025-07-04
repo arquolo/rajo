@@ -1,6 +1,7 @@
 __all__ = ['get_gpu_capability', 'get_gpu_memory_info']
 
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import NamedTuple
 
@@ -9,7 +10,7 @@ from glow import si_bin
 
 
 @contextmanager
-def _nvml():
+def _nvml() -> Iterator[None]:
     pynvml.nvmlInit()
     try:
         yield
@@ -19,11 +20,11 @@ def _nvml():
 
 def _get_device_handles() -> list:
     devices = os.environ.get('CUDA_VISIBLE_DEVICES')
-    if devices is not None:
-        indices = [int(dev) for dev in devices.split(',')]
-    else:
-        indices = range(int(pynvml.nvmlDeviceGetCount()))
-
+    indices = (
+        map(int, devices.split(','))
+        if devices is not None
+        else range(int(pynvml.nvmlDeviceGetCount()))
+    )
     return [pynvml.nvmlDeviceGetHandleByIndex(i) for i in indices]
 
 

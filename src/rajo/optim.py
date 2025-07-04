@@ -4,7 +4,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import InitVar, asdict, dataclass, field
 from math import sqrt
-from typing import Any, NamedTuple, final, overload
+from typing import Any, NamedTuple, cast, final, overload
 
 import torch
 from torch import Tensor
@@ -29,14 +29,18 @@ class SingleGroupOptimizer(Optimizer):
     extras: dict[str, Any] = field(default_factory=dict)
     _step = 0
 
-    def __post_init__(self, params: list[Parameter]):
+    def __post_init__(self, params: list[Parameter]) -> None:
         self.states = {p: [] for p in params}
 
     # torch.optim.lr_scheduler compat
 
     @property
-    def param_groups(self):
-        return [self]
+    def param_groups(self) -> list[dict]:
+        return cast(list[dict], [self])
+
+    @param_groups.setter
+    def _(self, value):
+        raise RuntimeError
 
     @property
     def defaults(self) -> dict:
@@ -47,7 +51,7 @@ class SingleGroupOptimizer(Optimizer):
         }
 
     @defaults.setter
-    def defaults(self, value):
+    def defaults(self, value) -> None:
         raise RuntimeError
 
     def setdefault(self, key: str, default):
@@ -66,13 +70,22 @@ class SingleGroupOptimizer(Optimizer):
             return v
         return self.extras[key]
 
-    def __setitem__(self, key: str, value):
+    def __setitem__(self, key: str, value) -> None:
         if key in SingleGroupOptimizer.__dataclass_fields__:  # private
             raise KeyError(key)
         if key in self.__dict__:
             self.__dict__[key] = value
         else:
             self.extras[key] = value
+
+    def keys(self) -> list[str]:
+        return [
+            'params',
+            *sorted(
+                set(self.__dict__.keys() | self.extras.keys())
+                - set(SingleGroupOptimizer.__dataclass_fields__)
+            ),
+        ]
 
     # core API
 
@@ -92,7 +105,7 @@ class SingleGroupOptimizer(Optimizer):
         raise NotImplementedError
 
     @final
-    def state_dict(self):
+    def state_dict(self) -> dict[str, Any]:
         return asdict(self) | {
             '_step': self._step,
             'grads': [p.grad for p in self.states],
@@ -101,7 +114,7 @@ class SingleGroupOptimizer(Optimizer):
 
     @final
     @torch.no_grad()
-    def load_state_dict(self, state: dict):
+    def load_state_dict(self, state: dict) -> None:
         self.__dict__.update(
             {k: v for k, v in state.items() if k not in ('grads', 'states')}
         )
@@ -191,7 +204,7 @@ class SGDW(SingleGroupOptimizer):
     weight_decay: float = 0
     nesterov: bool = False
 
-    def __post_init__(self, params):
+    def __post_init__(self, params) -> None:
         assert self.lr >= 0
         assert self.momentum >= 0
         assert self.weight_decay >= 0
@@ -206,7 +219,7 @@ class SGDW(SingleGroupOptimizer):
         grads: Sequence[Tensor],
         bufs: Sequence[list[Tensor]],
         **kwargs,
-    ):
+    ) -> None:
         if self.weight_decay != 0:
             _foreach.mul_(params, scalar=1 - self.lr * self.weight_decay)
 
@@ -248,7 +261,7 @@ class AdamW(SingleGroupOptimizer):
     weight_decay: float = 1e-2
     amsgrad: bool = False
 
-    def __post_init__(self, params):
+    def __post_init__(self, params) -> None:
         assert self.lr >= 0.0
         assert self.eps >= 0.0
         for i, beta in enumerate(self.betas):
@@ -272,7 +285,7 @@ class AdamW(SingleGroupOptimizer):
         *,
         step_size=1,
         **kwargs,
-    ):
+    ) -> None:
         if self.amsgrad:
             avg, avg_sq, max_avg_sq = self.zero_init(params, bufs, 3)
         else:
@@ -349,7 +362,7 @@ class RAdam(SingleGroupOptimizer):
         is_tractable=True,
         step_size=1,
         **kwargs,
-    ):
+    ) -> None:
         avg, avg_sq = self.zero_init(params, bufs, 2)
         beta1, beta2 = self.betas
 
@@ -390,7 +403,7 @@ class Lion(SingleGroupOptimizer):
         grads: Sequence[Tensor],
         bufs: Sequence[list[Tensor]],
         **kwargs,
-    ):
+    ) -> None:
         (avg,) = self.zero_init(params, bufs, 1)
         beta1, beta2 = self.betas
 

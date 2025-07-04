@@ -1,8 +1,8 @@
 __all__ = ['DdpSampler']
 
-from collections.abc import Iterator, Sized
+from collections.abc import Iterator
 from itertools import chain, cycle, islice
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 import torch
 from torch.utils.data import (
@@ -35,6 +35,7 @@ def generate_seed() -> int:
     return int(torch.empty((), dtype=torch.int64).random_().item())
 
 
+@runtime_checkable
 class SamplerLike[T](Protocol):
     def __iter__(self) -> Iterator[T]: ...
 
@@ -45,7 +46,7 @@ class DdpSampler[T](Sampler[T]):
     def __init__(
         self, sampler: Sampler[T] | SamplerLike[T], drop_last: bool = False
     ) -> None:
-        assert isinstance(sampler, Sized)
+        assert isinstance(sampler, SamplerLike)
         self.base = sampler
         self.drop_last = drop_last
         self.seed = generate_seed()

@@ -95,7 +95,7 @@ class Attention(nn.Module):
         if self.qkv_bias:
             line += ', qkv_bias=True'
         if self.dropout:
-            line += f', droupout={self.dropout}'
+            line += f', dropout={self.dropout}'
         if self.reattention:
             line += ', reattention=True'
         return f'{type(self).__module__}({line})'
@@ -144,7 +144,7 @@ class Attention(nn.Module):
         # and Memory-Efficient attention from XFormers
         # for PyTorch 2.x
         if _IS_TORCH_2X and not self.reattention:
-            dropout = self.droupout if self.is_train else 0
+            dropout = self.dropout if self.is_train else 0
             out = F.scaled_dot_product_attention(q, k, v, dropout_p=dropout)
 
         else:

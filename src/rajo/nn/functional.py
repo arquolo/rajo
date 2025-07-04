@@ -12,7 +12,7 @@ from rajo.metrics.func import soft_confusion
 
 _EPS = torch.finfo(torch.float).eps
 
-_size = Size | list[int] | tuple[int, ...]
+type _size = Size | list[int] | tuple[int, ...]
 
 
 # @torch.jit.script
@@ -36,7 +36,7 @@ def conv2d_ws(
     padding: _size | int | str = 0,
     dilation: _size | int = 1,
     groups: int = 1,
-):
+) -> Tensor:
     weight = F.layer_norm(weight, weight.shape[1:], eps=1e-5)
     return F.conv2d(x, weight, bias, stride, padding, dilation, groups)
 

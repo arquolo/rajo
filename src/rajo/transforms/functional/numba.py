@@ -3,30 +3,30 @@ __all__ = ['dither']
 from types import MappingProxyType
 from typing import Literal
 
-import cv2
 import numba
 import numpy as np
 
+_VALUES = {
+    'jarvis-judice-ninke': [
+        [0, 0, 0, 7, 5],
+        [3, 5, 7, 5, 3],
+        [1, 3, 5, 3, 1],
+    ],
+    'sierra': [
+        [0, 0, 0, 5, 3],
+        [2, 4, 5, 4, 2],
+        [0, 2, 3, 2, 0],
+    ],
+    'stucki': [
+        [0, 0, 0, 8, 4],
+        [2, 4, 8, 4, 2],
+        [1, 2, 4, 2, 1],
+    ],
+}
 _MATRICES = MappingProxyType(
     {
-        key: cv2.normalize(np.array(mat, 'f4'), None, norm_type=cv2.NORM_L1)
-        for key, mat in {
-            'jarvis-judice-ninke': [
-                [0, 0, 0, 7, 5],
-                [3, 5, 7, 5, 3],
-                [1, 3, 5, 3, 1],
-            ],
-            'sierra': [
-                [0, 0, 0, 5, 3],
-                [2, 4, 5, 4, 2],
-                [0, 2, 3, 2, 0],
-            ],
-            'stucki': [
-                [0, 0, 0, 8, 4],
-                [2, 4, 8, 4, 2],
-                [1, 2, 4, 2, 1],
-            ],
-        }.items()
+        key: np.array(mat, 'f') / np.sum(mat, dtype='f')
+        for key, mat in _VALUES.items()
     }
 )
 _DitherKind = Literal['jarvis-judice-ninke', 'stucki', 'sierra']

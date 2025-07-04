@@ -39,7 +39,7 @@ class DenseBlock(nn.ModuleList):
         step: int = 16,
         bottleneck: bool = True,
         ctx: ConvCtx | None = None,
-    ):
+    ) -> None:
         ctx = ctx or ConvCtx()
         dim_inner = round8(step * self.expansion)
 
@@ -100,7 +100,7 @@ class SqueezeExcitation(Gate):
         ratio: float = 0.25,
         activation: ActivationFn = nn.SiLU,
         scale_activation: ActivationFn = nn.Sigmoid,
-    ):
+    ) -> None:
         dim_inner = round8(dim * ratio)
         super().__init__(
             Reduce('b c h w -> b c', 'mean'),
@@ -125,7 +125,7 @@ class ResidualBlock(nn.Sequential):
 
     def __init__(
         self, dim: int, dropout: float = 0.0, ctx: ConvCtx | None = None
-    ):
+    ) -> None:
         ctx = ctx or ConvCtx()
         # TODO: Support stride
         super().__init__(
@@ -153,7 +153,7 @@ class BottleneckResidualBlock(nn.Sequential):
         groups: int | None = 1,
         dropout: float = 0.0,
         ctx: ConvCtx | None = None,
-    ):
+    ) -> None:
         ctx = ctx or ConvCtx()
         dim_inner = round8(dim * bn_ratio)
         # TODO: Support stride
@@ -185,7 +185,7 @@ class ResNeXtBlock(BottleneckResidualBlock):
         se_ratio: float = 0.25,
         dropout: float = 0.0,
         ctx: ConvCtx | None = None,
-    ):
+    ) -> None:
         ctx = ctx or ConvCtx()
         # TODO: Support stride
         super().__init__(dim, 0.5, se_ratio, 32, dropout, ctx)
@@ -242,7 +242,7 @@ def mobilenet_v3_block(
     se_ratio: float = 0.0,
     dropout: float = 0.0,
     ctx: ConvCtx | None = None,
-):
+) -> nn.Module:
     dim_out = dim_out or dim
     children = _mbconv_base(dim, dim_inner, dim_out, stride, se_ratio, ctx)
 
@@ -260,7 +260,7 @@ def mobilenet_v2_block(
     bn_ratio: float = 6.0,
     dropout: float = 0.0,
     ctx: ConvCtx | None = None,
-):
+) -> nn.Module:
     ctx = ctx or ConvCtx(activation=nn.ReLU6)
     dim_inner = round8(dim * bn_ratio)
     return mobilenet_v3_block(
@@ -325,7 +325,7 @@ class SplitAttention(nn.Module):
         groups: int = 1,
         radix: int = 2,
         ctx: ConvCtx | None = None,
-    ):
+    ) -> None:
         assert dim % (groups * radix) == 0
         ctx = ctx or ConvCtx()
         dim_inner = dim * radix // 4

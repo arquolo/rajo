@@ -81,7 +81,7 @@ class MultiNoise(ImageTransform):
     def image(self, image: np.ndarray, rng: np.random.Generator) -> np.ndarray:
         assert image.dtype == np.uint8
 
-        res = rng.random(image.shape, dtype='f4')
+        res = rng.random(image.shape, dtype='f')
         res *= self.high - self.low
         res += self.low
         res *= image  # Multiply
@@ -146,11 +146,12 @@ class LumaJitter(_LutTransform):
     contrast: tuple[float, float] = (0.8, 1.2)
 
     def get_lut(self, rng: np.random.Generator) -> np.ndarray:
-        lut = np.arange(256, dtype='f4')
-
-        lut += 256 * rng.uniform(*self.brightness)
-        lut = (lut - 128) * rng.uniform(*self.contrast) + 128
-
+        lut = np.arange(-128, 128, dtype='f')
+        lut /= 256  # [-0.5 .. +0.5]
+        lut += rng.uniform(*self.brightness)
+        lut *= rng.uniform(*self.contrast)
+        lut += 0.5
+        lut *= 256
         return lut.clip(0, 255).astype('u1')
 
 
@@ -160,11 +161,11 @@ class GammaJitter(_LutTransform):
 
     gamma: float = 0.2
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         assert self.gamma >= 0
 
     def get_lut(self, rng: np.random.Generator) -> np.ndarray:
-        lut = np.linspace(0, 1, num=256, dtype='f4')
+        lut = np.linspace(0, 1, num=256, dtype='f')
 
         max_gamma = 1 + self.gamma
         lut **= rng.uniform(1 / max_gamma, max_gamma)
@@ -281,7 +282,7 @@ class WarpAffine(DualStageTransform):
     inter: InitVar[str] = 'LINEAR'
     _inter: int = field(init=False)
 
-    def __post_init__(self, inter: str):
+    def __post_init__(self, inter: str) -> None:
         self._inter = getattr(cv2, f'INTER_{inter}')
 
     def prepare(self, rng: np.random.Generator, /, **_) -> dict[str, Any]:
@@ -312,7 +313,7 @@ class Elastic(DualStageTransform):
     inter: InitVar[str] = 'LINEAR'
     _inter: int = field(init=False)
 
-    def __post_init__(self, inter: str):
+    def __post_init__(self, inter: str) -> None:
         self._inter = getattr(cv2, f'INTER_{inter}')
 
     def prepare(
@@ -320,11 +321,16 @@ class Elastic(DualStageTransform):
     ) -> dict[str, Any] | None:
         if image is None:
             return None
-        offsets = rng.random((2, *image.shape[:2]), dtype='f4')
+        offsets = rng.random((2, *image.shape[:2]), dtype='f')
         offsets *= self.scale * 2
         offsets -= self.scale
 
-        for dim, (off, size) in enumerate(zip(offsets, image.shape[:2])):
+        for dim, (off, size) in enumerate(
+            zip(
+                [offsets[0], offsets[1]],
+                image.shape[:2],
+            )
+        ):
             shape = np.where(np.arange(2) == dim, size, 1)
             off += np.arange(size).reshape(shape)  # noqa: PLW2901
             cv2.GaussianBlur(off, (17, 17), self.sigma, dst=off)
