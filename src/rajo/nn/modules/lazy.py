@@ -14,18 +14,19 @@ from .primitive import Bias2d, BlurPool2d, Conv2dWs
 
 
 def _materialize_cls(m: lazy._LazyProtocol) -> None:
-    # Fixes incomplete implementation of LazyModuleMixin._lazy_load_hook
+    """
+    Fixes incomplete implementation of LazyModuleMixin._lazy_load_hook
 
-    # Does the same as LazyModuleMixin._infer_parameters does,
-    # except no input is needed
+    Does the same as LazyModuleMixin._infer_parameters does,
+    except no input is needed.
 
-    # By default, if all module's parameters are loaded during load_state_dict,
-    # _lazy_load_hook doen't mutate class.
-    # Because of that even completely initialized modules are left as lazy,
-    # and require calling forward() to trigger class mutation.
+    By default, if all module's parameters are loaded during load_state_dict,
+    _lazy_load_hook doen't mutate class.
+    Because of that even completely initialized modules are left as lazy,
+    and require calling forward() to trigger class mutation.
 
-    # This function cancels this requirement.
-
+    This function cancels this requirement.
+    """
     # FIXME: When merged to an upstream, do nothing
     assert isinstance(m, lazy.LazyModuleMixin)
 

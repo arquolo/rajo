@@ -27,14 +27,14 @@ class Scores:
 
 
 class MetricFn(Protocol):
-    def __call__(self, pred, true) -> Tensor: ...
+    def __call__(self, pred, true, /) -> Tensor: ...
 
 
 class Metric(ABC):
     """Base class for metric"""
 
     @abstractmethod
-    def __call__(self, pred, true) -> Tensor:
+    def __call__(self, pred, true, /) -> Tensor:
         raise NotImplementedError
 
     @abstractmethod
@@ -57,7 +57,7 @@ class Lambda(Metric):
         self.fn = fn
         self.name = fn.__name__ if name is None else name
 
-    def __call__(self, pred, true) -> Tensor:
+    def __call__(self, pred, true, /) -> Tensor:
         return self.fn(pred, true)
 
     def collect(self, state: Tensor) -> dict[str, Tensor]:

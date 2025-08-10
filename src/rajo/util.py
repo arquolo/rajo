@@ -173,10 +173,10 @@ def dump_to_onnx(
 
     """
     dynamic_axes = {
-        f'inp_{i}': {
-            0: 'batch',
-            **{dim: f'inp_{i}_dim_{dim}' for dim in range(2, 1 + len(shape))},
-        }
+        f'inp_{i}': (
+            {0: 'batch'}
+            | {dim: f'inp_{i}_dim_{dim}' for dim in range(2, 1 + len(shape))}
+        )
         for i, shape in enumerate(shapes)
     }
     torch.onnx.export(

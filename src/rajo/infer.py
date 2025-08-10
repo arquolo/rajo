@@ -68,7 +68,7 @@ class MultiheadIndexer(Indexer):
                 assert (
                     len(multi) <= num_heads
                 ), f'Index {multi} is deeper than head count ({num_heads})'
-                loc = tuple(j if j != -1 else slice(None) for j in multi)
+                loc = tuple(slice(None) if j == -1 else j for j in multi)
                 lut[loc] = True
             self.labels[t] = lut.ravel().nonzero()[0].astype(dtype)
 
@@ -115,7 +115,7 @@ class MultiheadIndexer(Indexer):
         ), f'Expected {self._total} channels, got {scores.shape[-1]}'
 
         r = self._pnr(scores)
-        return self.lut[r] if self.lut is not None else r
+        return r if self.lut is None else self.lut[r]
 
 
 class PackedNargmaxRavel:

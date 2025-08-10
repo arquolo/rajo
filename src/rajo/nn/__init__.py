@@ -11,6 +11,7 @@ from .modules import (
     Encoder,
     Ensemble,
     FeedForward,
+    View,
     Gate,
     Laplace,
     LazyBias2d,
@@ -74,6 +75,7 @@ __all__ = [
     'SplitAttention',
     'SqueezeExcitation',
     'Upscale2d',
+    'View',
     'VitBlock',
     'functional',
 ]

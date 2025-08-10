@@ -33,11 +33,11 @@ class _Weighted(nn.Module):
             raise ValueError(f'Unknown reduction mode: {reduction}')
         self.reduction = reduction
 
-        if weight is not None:
+        if weight is None:
+            self.register_buffer('gain', None)
+        else:
             gain = torch.as_tensor(weight, dtype=torch.float)
             self.register_buffer('gain', gain.div_(gain.mean()))
-        else:
-            self.register_buffer('gain', None)
 
     def extra_repr(self) -> str:
         if self.gain is None:

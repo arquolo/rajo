@@ -21,9 +21,9 @@ def _nvml() -> Iterator[None]:
 def _get_device_handles() -> list:
     devices = os.environ.get('CUDA_VISIBLE_DEVICES')
     indices = (
-        map(int, devices.split(','))
-        if devices is not None
-        else range(int(pynvml.nvmlDeviceGetCount()))
+        range(int(pynvml.nvmlDeviceGetCount()))
+        if devices is None
+        else map(int, devices.split(','))
     )
     return [pynvml.nvmlDeviceGetHandleByIndex(i) for i in indices]
 

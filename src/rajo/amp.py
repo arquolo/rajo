@@ -34,7 +34,12 @@ def _fp16_is_definitely_not_available() -> bool:
         # No CUDA, so definitely no FP16
         return True
 
-    if not torch.cuda.is_initialized():
+    if torch.cuda.is_initialized():
+        # CUDA is initialized already, no need to be careful
+        device_ids = range(torch.cuda.device_count())
+        caps = [torch.cuda.get_device_capability(dev) for dev in device_ids]
+
+    else:
         # Using Torch to check CUDA capability here triggers CUDA init,
         # (what is heavy if done from Torch side due to lots of kernels)
         # but we have no NVML alternative,
@@ -44,11 +49,6 @@ def _fp16_is_definitely_not_available() -> bool:
 
         # Rely on NVML driver
         caps = get_gpu_capability()
-
-    else:
-        # CUDA is initialized already, no need to be careful
-        device_ids = range(torch.cuda.device_count())
-        caps = [torch.cuda.get_device_capability(dev) for dev in device_ids]
 
     return all(cap < _MIN_FP16_CUDA_CAPABILITY for cap in caps)
 
@@ -75,7 +75,7 @@ class Grads:
         self._num_backwards += 1
 
     def unscale(self) -> None:
-        return
+        pass
 
     def step(self) -> None:
         if self._num_backwards:
@@ -276,11 +276,8 @@ class _GenericScalingGrads(Grads):
 
     def _update_(self, infs: Iterable[Tensor]) -> None:
         # Collect infs from all devices
-        found_inf, *rest = (
-            inf.to(self._scale.device, non_blocking=True) for inf in infs
-        )
-        for inf in rest:
-            found_inf += inf
+        infs = [inf.to(self._scale.device, non_blocking=True) for inf in infs]
+        found_inf = torch.stack(infs).sum(0)
 
         torch._amp_update_scale_(
             self._scale, self._growth_tracker, found_inf, 2.0, 0.5, _PATIENCE

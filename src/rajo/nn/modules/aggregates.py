@@ -114,7 +114,7 @@ class Cat(_Sequential):
     """
 
     def cat(self, xs: list[Tensor]) -> Tensor:
-        x = torch.cat(xs, 1) if len(xs) != 1 else xs[0]
+        x = xs[0] if len(xs) == 1 else torch.cat(xs, 1)
         return self.seq(x)
 
     @jit.ignore()

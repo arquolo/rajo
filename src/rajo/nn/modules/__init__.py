@@ -28,7 +28,15 @@ from .loss import (
     LossWeighted,
     MultiheadLoss,
 )
-from .primitive import Decimate2d, Laplace, Noise, RgbToGray, Scale, Upscale2d
+from .primitive import (
+    Decimate2d,
+    Laplace,
+    Noise,
+    RgbToGray,
+    Scale,
+    Upscale2d,
+    View,
+)
 from .transformer import (
     Attention,
     FeedForward,
@@ -75,6 +83,7 @@ __all__ = [
     'SplitAttention',
     'SqueezeExcitation',
     'Upscale2d',
+    'View',
     'VitBlock',
     'mbconv',
     'mobilenet_v2_block',

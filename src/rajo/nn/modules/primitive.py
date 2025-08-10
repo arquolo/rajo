@@ -8,6 +8,7 @@ __all__ = [
     'RgbToGray',
     'Scale',
     'Upscale2d',
+    'View',
 ]
 
 from collections.abc import Iterable
@@ -20,6 +21,20 @@ from torch import Tensor, jit, nn
 from .. import functional as F
 from .. import ops
 from .util import to_buffers
+
+
+class View(nn.Module):
+    shape: Final[tuple[int, ...]]
+
+    def __init__(self, *shape: int) -> None:
+        super().__init__()
+        self.shape = shape
+
+    def forward(self, x: Tensor) -> Tensor:
+        return x.view(self.shape)
+
+    def extra_repr(self) -> str:
+        return f'shape={self.shape}'
 
 
 class Scale(nn.Module):

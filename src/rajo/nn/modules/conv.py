@@ -375,12 +375,12 @@ def resnest_block(
 ) -> nn.Module:
     ctx = ctx or ConvCtx()
     # dim_inner = round8(dim * rate) * groups  # TODO
-    if stride != 1:
-        dim_inner = (dim // 4) * groups
-        pool = [ctx.avg_pool(stride)]
-    else:
+    if stride == 1:
         dim_inner = round8(dim * rate)
         pool = []
+    else:
+        dim_inner = (dim // 4) * groups
+        pool = [ctx.avg_pool(stride)]
 
     core: list[nn.Module] = [
         ctx.conv(dim_inner, 1, bias=False),
@@ -397,14 +397,14 @@ def resnest_block(
     ]
 
     residual: nn.Module
-    if stride != 1:
+    if stride == 1:
+        residual = Residual(*core)
+    else:
         downsample = [
             ctx.avg_pool(stride),
             ctx.conv(dim, 1, bias=False),
             ctx.norm(),
         ]
         residual = Ensemble(core, downsample, mode='sum')
-    else:
-        residual = Residual(*core)
 
     return nn.Sequential(residual, ctx.activation_())

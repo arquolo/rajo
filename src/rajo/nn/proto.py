@@ -174,23 +174,22 @@ def max_vit(
 
     dims = dim_stem, *(dim << i for i, _ in enumerate(depths))
 
-    layers: list[nn.Module] = []
-    for d, depth in zip(dims[1:], depths):
-        layers += [
-            MaxVitBlock(
-                d,
-                dim_head,
-                window_size,
-                stride,
-                bn_ratio,
-                se_ratio,
-                mlp_ratio,
-                dropout,
-                qkv_bias,
-                ctx,
-            )
-            for stride in [2] + [1] * (depth - 1)
-        ]
+    layers = [
+        MaxVitBlock(
+            d,
+            dim_head,
+            window_size,
+            stride,
+            bn_ratio,
+            se_ratio,
+            mlp_ratio,
+            dropout,
+            qkv_bias,
+            ctx,
+        )
+        for d, depth in zip(dims[1:], depths)
+        for stride in [2] + [1] * (depth - 1)
+    ]
 
     head = nn.Sequential(
         Reduce('b d h w -> b d', 'mean'),

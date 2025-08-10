@@ -9,9 +9,11 @@ import torch
 from torch import nn
 from torch.utils.data import RandomSampler
 from torchvision import transforms as tfs
+from torchvision.ops.stochastic_depth import StochasticDepth
 from torchvision.datasets import CIFAR10
 from tqdm.auto import tqdm
 
+from rajo import get_loader, param_count
 import rajo.metrics as m
 import rajo.nn as gnn
 
@@ -57,13 +59,13 @@ def make_model_new(init=16):
         cout = cout or cin
         return nn.Sequential(
             conv(cin, cout, pad=1, stride=2),
-            gnn.Sum(
+            gnn.Residual(
                 conv(cout, cout * 2),
                 conv(cout * 2, pad=2, groups=cout * 2),
                 conv(cout * 2, cout)[:-1],
-                tail=nn.ReLU(),
-                skip=0.1,
+                StochasticDepth(0.1, mode='row'),
             ),
+            nn.ReLU(),
         )
 
     return nn.Sequential(
@@ -113,19 +115,18 @@ tft = tfs.Compose(
 ds = CIFAR10(args.root / 'cifar10', transform=tft, download=True)
 ds_val = CIFAR10(args.root / 'cifar10', transform=tfs.ToTensor(), train=False)
 
-loader = gnn.make_loader(
-    ds,
-    args.batch_size,
-    sampler=RandomSampler(ds, True, sample_size),
-    multiprocessing=False,
+loader = (
+    get_loader(ds)
+    .shuffle(RandomSampler(ds, True, sample_size))
+    .batch(args.batch_size)
 )
-val_loader = gnn.make_loader(ds_val, 100, multiprocessing=False)
+val_loader = get_loader(ds_val).batch(100)
 
 # net = make_model_default()
 net = make_model_new(args.width)
 net.to(DEVICE)
 opt = torch.optim.AdamW(net.parameters())
-print(gnn.param_count(net))
+print(param_count(net))
 
 criterion = nn.CrossEntropyLoss()
 metrics = [
@@ -138,7 +139,7 @@ stepper = gnn.Stepper(
 
 history = defaultdict[str, list](list)
 with tqdm(total=epoch_len * args.epochs, desc='train') as pbar:
-    for i, split in enumerate(glow.ichunked(loader, epoch_len), 1):
+    for i, split in enumerate(glow.chunked(loader, epoch_len), 1):
         tscalars = stepper.run(split, pbar).scalars
         with tqdm(total=len(val_loader), desc='val', leave=False) as pbar_val:
             vscalars = stepper.run(val_loader, pbar_val, False).scalars
@@ -160,9 +161,7 @@ if args.plot:
         ax.legend(ax.plot(values_), ['train', 'val'])
         ax.set_title(tag)
         ax.set_ylim(
-            [
-                int(min(x for xs in values_ for x in xs)),
-                int(max(x for xs in values_ for x in xs) + 0.999),
-            ]
+            float(min(x for xs in values_ for x in xs)),
+            float(max(x for xs in values_ for x in xs) + 0.999),
         )
     plt.show()
