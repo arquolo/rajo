@@ -14,8 +14,8 @@ from torch import Tensor, nn
 
 from rajo.distributed import all_reduce
 
-from .. import functional as F
 from ... import _foreach
+from .. import functional as F
 
 
 class _Weighted(nn.Module):

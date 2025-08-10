@@ -9,13 +9,13 @@ import torch
 from torch import nn
 from torch.utils.data import RandomSampler
 from torchvision import transforms as tfs
-from torchvision.ops.stochastic_depth import StochasticDepth
 from torchvision.datasets import CIFAR10
+from torchvision.ops.stochastic_depth import StochasticDepth
 from tqdm.auto import tqdm
 
-from rajo import get_loader, param_count
 import rajo.metrics as m
 import rajo.nn as gnn
+from rajo import get_loader, param_count
 
 DEVICE = torch.device('cuda')
 

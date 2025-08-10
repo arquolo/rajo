@@ -1,11 +1,11 @@
 __all__ = ['AdamW', 'Lamb', 'Lion', 'RAdam', 'SGDW']
 
 from collections import defaultdict
-from weakref import ref
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import InitVar, asdict, dataclass, field, fields
 from math import sqrt
 from typing import Any, NamedTuple, cast, final, overload
+from weakref import ref
 
 import torch
 from torch import Tensor

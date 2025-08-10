@@ -1,23 +1,17 @@
 __all__ = ['plot_model']
 
 import functools
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Callable
 from contextlib import ExitStack
+from typing import Any
 
 import graphviz
 import torch
-from glow import mangle, si
+from glow import countable, mangle, si
 from torch import Tensor, nn
 from torch.autograd.graph import Node
 
 # TODO: Still buggy, continue research/refactor
-
-
-def id_(x) -> str:
-    if hasattr(x, 'variable'):
-        x = x.variable
-    addr = x.storage().data_ptr() if isinstance(x, Tensor) else id(x)
-    return hex(addr)
 
 
 def flatten(xs) -> Iterator[Tensor]:
@@ -26,38 +20,43 @@ def flatten(xs) -> Iterator[Tensor]:
     if isinstance(xs, Tensor):
         yield xs
         return
+    if isinstance(xs, Mapping):
+        xs = xs.items()
     if isinstance(xs, Iterable):
-        if isinstance(xs, Mapping):
-            xs = xs.items()
         for x in xs:
             yield from flatten(x)
         return
     raise TypeError(f'Unsupported argument type: {type(xs)}')
 
 
-def sized(var: Tensor) -> str:
-    if max(var.shape) == var.numel():
-        return f'{tuple(var.shape)}'
-    return f'{tuple(var.shape)}\n{si(var.numel())}'
+def sized(t: Tensor) -> str:
+    shape = f'{tuple(t.shape)}'
+    return shape if t.squeeze().ndim <= 1 else f'{shape}\n{si(t.numel())}'
 
 
 class Builder:
     def __init__(
         self,
-        inputs: set[str],
-        params: dict[str, str],
+        inputs: list[Tensor],
+        params: dict[str, Any],
         *,
         nesting: bool = True,
         variables: bool = True,
     ) -> None:
-        self.inputs = inputs
-        self.params = params
+        # For self._id
+        self._buf_count = _tensor_countable()
+        self._var_count = _tensor_countable()
+        self._obj_count = countable()
+
+        self.inputs = {self._id(var) for var in inputs}
+        self.params = {self._id(var): name for name, var in params.items()}
+
         self.nesting = nesting
         self.variables = variables
 
         self._mangle = mangle()
         self._memo: dict[str, str] = {}
-        self._shapes: dict[Node, tuple] = {}
+        self._shapes: dict[Node, tuple[int, ...]] = {}
         root = graphviz.Digraph(
             name='root',
             graph_attr={
@@ -82,51 +81,55 @@ class Builder:
     def _add_op_node(self, grad_id: str, grad: Node) -> None:
         label = type(grad).__name__.replace('Backward', '')
         if grad in self._shapes:
-            label = f'{label}\n=> {tuple(self._shapes[grad])}'
+            label = f'{label}\n-> {tuple(self._shapes[grad])}'
         self.stack[-1].node(grad_id, label)
 
     def _add_var_node(self, var_id: str, var: Tensor) -> None:
-        label_ = []
-        if param_name := self.params.get(var_id):
-            root = self.stack[-1]
-            parts = param_name.split('.')
-            label_.append(parts[-1] if self.nesting else '.'.join(parts[1:]))
-        else:
-            root = self.stack[0]  # unnamed, that's why external
+        label = f'{var_id}\n{sized(var)}'
 
-        label = '\n'.join([*label_, var_id, sized(var)])
+        if param_name := self.params.get(var_id):
+            sg = self.stack[-1]
+            parts = param_name.split('.')
+            if self.nesting:
+                label = f'{parts[-1]}\n{label}'
+            else:
+                label = f'{'.'.join(parts[1:])}\n{label}'
+        else:
+            sg = self.stack[0]  # unnamed, thus use top level graph
+
         color = 'yellow' if var_id in self.inputs else 'lightblue'
-        root.node(var_id, label, fillcolor=color)
+        sg.node(var_id, label, fillcolor=color)
 
     def _traverse_saved(self, grad_id: str, *tensors: Tensor) -> None:
         tensors = tuple(v for v in tensors if isinstance(v, Tensor))
         if not tensors:
             return
-        s_ctx = self.stack[-1].subgraph()
-        assert s_ctx is not None
-        with s_ctx as s:
-            s.attr(rank='same')
-            for var in tensors:
-                var_id = id_(var)
-                if var_id not in self._memo:
-                    label = f'{var_id}\n{sized(var)}'
-                    s.node(var_id, label, fillcolor='orange')
-                s.edge(var_id, grad_id)
+        sg = graphviz.Digraph()
+        sg.attr(rank='same')
+        for var in tensors:
+            var_id = self._id(var)
+            if var_id not in self._memo:
+                label = f'{var_id}\n{sized(var)}'
+                sg.node(var_id, label, fillcolor='orange')
+            sg.edge(var_id, grad_id)
+        self.stack[-1].subgraph(sg)
 
     def _traverse(
         self,
         grad: Node | None,
         depth: int = 0,
-    ) -> Iterator[tuple[int, Node | None, Node]]:
-        if grad is None or (grad_id := id_(grad)) in self._memo:
+    ) -> Iterator[tuple[int, Node, Node]]:
+        if grad is None or (grad_id := self._id(grad)) in self._memo:
             return
 
-        root = self.stack[-1]
-        self._memo[grad_id] = head = root.name
+        g = self.stack[-1]
+        assert g.name is not None
+        self._memo[grad_id] = head = g.name
+
         if hasattr(grad, 'variable'):
             # Has variable, so it's either Parameter or Variable
             self._add_var_node(grad_id, grad.variable)
-            yield (depth - 1, None, grad)
+            # yield (depth - 1, None, grad)  # <- only to pass `depth` info
             return
 
         # Doesn't have variable, so it's "operation"
@@ -136,12 +139,12 @@ class Builder:
         if self.variables and hasattr(grad, 'saved_tensors'):
             self._traverse_saved(grad_id, *(grad.saved_tensors or ()))
 
-        for grad_next, _ in getattr(grad, 'next_functions', ()):
+        for grad_next, _ in grad.next_functions:
             if grad_next is None:
                 continue
             yield from self._traverse(grad_next, depth + 1)
 
-            next_id = id_(grad_next)
+            next_id = self._id(grad_next)
             tail = self._memo.get(next_id)
             if (
                 tail is not None
@@ -153,16 +156,15 @@ class Builder:
 
             name = self.params.get(next_id)
             if self.nesting and name and name.rpartition('.')[0] == head:
-                s_ctx = root.subgraph()
-                assert s_ctx is not None
-                with s_ctx as s:
-                    s.attr(rank='same')
-                    s.edge(next_id, grad_id)  # same module, same rank
+                sg = graphviz.Digraph()
+                sg.attr(rank='same')
+                sg.edge(next_id, grad_id)  # same module, same rank
+                g.subgraph(sg)
             else:
                 self.stack[0].edge(next_id, grad_id)
 
     def _mark(self, ts) -> None:
-        edges: list[tuple[int, Node | None, Node]] = []
+        edges: list[tuple[int, Node, Node]] = []
         for t in flatten(ts):
             if t.grad_fn is not None:
                 self._shapes[t.grad_fn] = t.shape
@@ -172,11 +174,10 @@ class Builder:
 
         max_depth = max(depth for depth, *_ in edges) + 1
         for depth, tail, head in edges:  # inter-module edges
-            if tail is not None:
-                minlen = f'{max_depth - depth}' if self.nesting else None
-                self.stack[0].edge(id_(tail), id_(head), minlen=minlen)
+            minlen = f'{max_depth - depth}' if self.nesting else None
+            self.stack[0].edge(self._id(tail), self._id(head), minlen=minlen)
 
-    def forward_pre(self, name: str, module: nn.Module, xs) -> None:
+    def enter(self, name: str, module: nn.Module, xs) -> None:
         self._mark(xs)
         # -------- start node --------
         if not self.nesting:
@@ -185,14 +186,28 @@ class Builder:
         scope.attr(label=f'{name.split(".")[-1]}:{type(module).__name__}')
         self.stack.append(scope)
 
-    def forward(self, module: nn.Module, _, ys) -> None:
+    def exit_(self, module: nn.Module, _, ys) -> None:
         self._mark(ys)
         if not self.nesting:
             return
-        cluster = self.stack.pop()
-        cluster.name = f'cluster_{cluster.name}'
-        self.stack[-1].subgraph(cluster)
+        # Link child with parent and transform to cluster only if child is done
+        scope = self.stack.pop()
+        scope.name = f'cluster_{scope.name}'
+        self.stack[-1].subgraph(scope)
         # -------- end node --------
+
+    def _id(self, x) -> str:
+        if hasattr(x, 'variable'):
+            x = x.variable
+        return (
+            (
+                f'#{self._var_count(x)}'
+                if x.requires_grad
+                else f'##{self._buf_count(x)}'
+            )
+            if isinstance(x, Tensor)
+            else f'op{self._obj_count(x)}'
+        )
 
 
 def plot_model(
@@ -212,20 +227,12 @@ def plot_model(
         for s in input_shapes
     ]
     params = model.state_dict(prefix='root.', keep_vars=True)
-    hk = Builder(
-        {id_(var) for var in inputs},
-        {id_(var): name for name, var in params.items()},
-        nesting=nesting,
-        variables=variables,
-    )
+    hk = Builder(inputs, params, nesting=nesting, variables=variables)
     with ExitStack() as stack:
         for name, m in model.named_modules(prefix='root'):
-            stack.callback(
-                m.register_forward_pre_hook(
-                    functools.partial(hk.forward_pre, name)
-                ).remove
-            )
-            stack.callback(m.register_forward_hook(hk.forward).remove)
+            enter_ = functools.partial(hk.enter, name)
+            stack.callback(m.register_forward_pre_hook(enter_).remove)
+            stack.callback(m.register_forward_hook(hk.exit_).remove)
         model(*inputs)
 
     dot = hk.stack.pop()
@@ -242,3 +249,9 @@ def plot_model(
     dot.graph_attr.update(size=f'{size},{size}')
     dot.render(cleanup=True)
     return dot
+
+
+def _tensor_countable() -> Callable[[Tensor], int]:
+    """`countable` with `torch.data_ptr` instead of `id`"""
+    instances: dict[int, int] = {}
+    return lambda obj: instances.setdefault(obj.data_ptr(), len(instances))

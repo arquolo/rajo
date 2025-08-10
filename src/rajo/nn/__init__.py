@@ -11,7 +11,6 @@ from .modules import (
     Encoder,
     Ensemble,
     FeedForward,
-    View,
     Gate,
     Laplace,
     LazyBias2d,
@@ -36,6 +35,7 @@ from .modules import (
     SplitAttention,
     SqueezeExcitation,
     Upscale2d,
+    View,
     VitBlock,
 )
 
