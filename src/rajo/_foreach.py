@@ -2,10 +2,14 @@ __all__ = [
     'add_',
     'addcdiv_',
     'addcmul_',
+    'clamp_max_',
+    'div',
     'lerp',
     'lerp_',
     'maximum_',
+    'mul',
     'mul_',
+    'norm',
     'sqrt',
     'zero_',
 ]
@@ -78,6 +82,41 @@ def addcmul_(
             s.addcmul_(t1, t2, value=value)
 
 
+def clamp_max_(
+    self: Iterable[Tensor], other: Iterable[Tensor] | Number = 1
+) -> None:
+    """`self.clamp_()`"""
+    self = list(self)
+    if isinstance(other, Iterable):
+        other = list(other)
+        if can_do_foreach(self + other):
+            torch._foreach_clamp_max_(self, other)
+        else:
+            for s, o in zip(self, other):
+                s.clamp_max_(o)
+    elif can_do_foreach(self):
+        torch._foreach_clamp_max_(self, other)
+    else:
+        for s in self:
+            s.clamp_max_(other)
+
+
+def div(
+    self: Iterable[Tensor], other: Iterable[Tensor] | Number = 1
+) -> list[Tensor]:
+    """`self / other`"""
+    self = list(self)
+    if isinstance(other, Iterable):
+        other = list(other)
+        if can_do_foreach(self + other):
+            return list(torch._foreach_div(self, other))
+        return [x / y for x, y in zip(self, other)]
+
+    if can_do_foreach(self):
+        return list(torch._foreach_div(self, other))
+    return [x / other for x in self]
+
+
 def lerp(
     self: Iterable[Tensor], other: Iterable[Tensor], *, weight: Number
 ) -> list[Tensor]:
@@ -113,14 +152,48 @@ def maximum_(self: Iterable[Tensor], other: Iterable[Tensor]) -> None:
             torch.max(s, o, out=s)
 
 
-def mul_(self: Iterable[Tensor], *, scalar: Number = 1) -> None:
-    """`self *= scalar`"""
+def mul(
+    self: Iterable[Tensor], other: Iterable[Tensor] | Tensor | Number = 1
+) -> list[Tensor]:
+    """`self * other`"""
     self = list(self)
+    if isinstance(other, Iterable):
+        other = list(other)
+        if can_do_foreach(self + other):
+            return list(torch._foreach_mul(self, other))
+        return [x * y for x, y in zip(self, other)]
+
     if can_do_foreach(self):
-        torch._foreach_mul_(self, scalar)
+        return list(torch._foreach_mul(self, other))
+    return [x * other for x in self]
+
+
+def mul_(self: Iterable[Tensor], other: Iterable[Tensor] | Number = 1) -> None:
+    """`self *= other`"""
+    self = list(self)
+    if isinstance(other, Iterable):
+        other = list(other)
+        if can_do_foreach(self + other):
+            torch._foreach_mul_(self, other)
+        else:
+            for s, f in zip(self, other):
+                s.mul_(f)
+
+    elif can_do_foreach(self):
+        torch._foreach_mul_(self, other)
     else:
         for s in self:
-            s.mul_(scalar)
+            s.mul_(other)
+
+
+def norm(
+    self: Iterable[Tensor], p: Number = 2, dtype: torch.dtype | None = None
+) -> list[Tensor]:
+    """`self.norm(p, dtype=)`"""
+    self = list(self)
+    if can_do_foreach(self):
+        return list(torch._foreach_norm(self, p, dtype))
+    return [s.norm(p, dtype=dtype) for s in self]
 
 
 def sqrt(self: Iterable[Tensor]) -> list[Tensor]:

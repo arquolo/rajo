@@ -1,4 +1,4 @@
-__all__ = ['AdamW', 'Lion', 'RAdam', 'SGDW']
+__all__ = ['AdamW', 'Lamb', 'Lion', 'RAdam', 'SGDW']
 
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
@@ -221,12 +221,12 @@ class SGDW(SingleGroupOptimizer):
         **kwargs,
     ) -> None:
         if self.weight_decay != 0:
-            _foreach.mul_(params, scalar=1 - self.lr * self.weight_decay)
+            _foreach.mul_(params, 1 - self.lr * self.weight_decay)
 
         if self.momentum != 0:
             if bufs[0]:
                 avg = [bufs_[0] for bufs_ in bufs]
-                _foreach.mul_(avg, scalar=self.momentum)
+                _foreach.mul_(avg, self.momentum)
                 _foreach.add_(avg, grads, alpha=1 - self.dampening)
             else:
                 for grad, bufs_ in zip(grads, bufs):
@@ -296,11 +296,11 @@ class AdamW(SingleGroupOptimizer):
 
         _foreach.lerp_(avg, grads, weight=1 - beta1)
 
-        _foreach.mul_(avg_sq, scalar=beta2)
+        _foreach.mul_(avg_sq, beta2)
         _foreach.addcmul_(avg_sq, grads, grads, value=1 - beta2)
 
         if self.weight_decay != 0:
-            _foreach.mul_(params, scalar=1 - self.lr * self.weight_decay)
+            _foreach.mul_(params, 1 - self.lr * self.weight_decay)
 
         if self.amsgrad:
             _foreach.maximum_(max_avg_sq, avg_sq)
@@ -368,11 +368,11 @@ class RAdam(SingleGroupOptimizer):
 
         _foreach.lerp_(avg, grads, weight=1 - beta1)
 
-        _foreach.mul_(avg_sq, scalar=beta2)
+        _foreach.mul_(avg_sq, beta2)
         _foreach.addcmul_(avg_sq, grads, grads, value=1 - beta2)
 
         if self.weight_decay != 0:
-            _foreach.mul_(params, scalar=1 - self.weight_decay * self.lr)
+            _foreach.mul_(params, 1 - self.weight_decay * self.lr)
 
         if is_tractable:
             denom = _foreach.sqrt(avg_sq)
@@ -408,7 +408,7 @@ class Lion(SingleGroupOptimizer):
         beta1, beta2 = self.betas
 
         if self.weight_decay != 0:
-            _foreach.mul_(params, scalar=1 - self.lr * self.weight_decay)
+            _foreach.mul_(params, 1 - self.lr * self.weight_decay)
 
         update = _foreach.lerp(avg, grads, weight=1 - beta1)
         for u in update:
@@ -416,3 +416,85 @@ class Lion(SingleGroupOptimizer):
         _foreach.add_(params, update, alpha=-self.lr)
 
         _foreach.lerp_(avg, grads, weight=1 - beta2)
+
+
+@dataclass
+class Lamb(SingleGroupOptimizer):
+    r"""Implements Lamb algorithm.
+    It has been proposed in `Large Batch Optimization for Deep Learning:
+    Training BERT in 76 minutes`__.
+    Arguments:
+        params: iterable of parameters to optimize or dicts defining
+            parameter groups
+        lr: learning rate (default: 1e-3)
+        betas: coefficients used for computing
+            running averages of gradient and its square (default: (0.9, 0.999))
+        eps: term added to the denominator to improve
+            numerical stability (default: 1e-8)
+        weight_decay: weight decay (L2 penalty) (default: 0)
+        clamp_value: clamp weight_norm in (0,clamp_value) (default: 10)
+            set to a high value to avoid it (e.g 10e3)
+        adam: always use trust ratio = 1, which turns this
+            into Adam. Useful for comparison purposes. (default: False)
+        debias: debias adam by (1 - beta**step) (default: False)
+
+    __ https://arxiv.org/abs/1904.00962
+    Note:
+        Reference code: https://github.com/cybertronai/pytorch-lamb
+    """
+
+    lr: float = 1e-3
+    betas: tuple[float, float] = (0.9, 0.999)
+    weight_decay: float = 0.0
+    eps: float = 1e-8
+    clamp_value: float = 10
+    adam: bool = False
+    debias: bool = False
+
+    def common_step_args(self) -> dict:
+        if self.debias:
+            return {'step_size': self.lr}
+
+        beta1_t, beta2_t = (beta**self._step for beta in self.betas)
+        correction1 = 1 - beta1_t
+        correction2 = 1 - beta2_t
+        return {'step_size': self.lr * (correction2**0.5) / correction1}
+
+    def device_step(
+        self,
+        params: Sequence[Parameter],
+        grads: Sequence[Tensor],
+        bufs: Sequence[list[Tensor]],
+        *,
+        step_size: float = 1,
+        **kwargs,
+    ) -> None:
+        avg, avg_sq = self.zero_init(params, bufs, 2)
+        beta1, beta2 = self.betas
+
+        _foreach.lerp_(avg, grads, weight=1 - beta1)
+
+        _foreach.mul_(avg_sq, beta2)
+        _foreach.addcmul_(avg_sq, grads, grads, value=1 - beta2)
+
+        # update = avg / (sqrt(avg_sq) + eps)
+        denom = _foreach.sqrt(avg_sq)
+        _foreach.add_(denom, self.eps)
+        update = _foreach.div(avg, denom)
+
+        if self.weight_decay:
+            _foreach.add_(update, params, alpha=self.weight_decay)
+
+        if not self.adam:
+            update_norm = torch.stack(_foreach.norm(update))
+            params_norm = torch.stack(_foreach.norm(params))
+            _foreach.clamp_max_(params_norm, self.clamp_value)
+
+            trust_ratio = torch.where(
+                (update_norm * params_norm).bool(),
+                params_norm / update_norm,
+                torch.as_tensor(1, device=update_norm.device),
+            )
+            _foreach.mul_(update, trust_ratio.unbind())
+
+        _foreach.add_(params, update, alpha=-step_size)
