@@ -15,6 +15,7 @@ from torch import Tensor, nn
 from rajo.distributed import all_reduce
 
 from .. import functional as F
+from ... import _foreach
 
 
 class _Weighted(nn.Module):
@@ -45,7 +46,7 @@ class _Weighted(nn.Module):
 
     def _to_output(self, tensors: list[Tensor]) -> list[Tensor] | Tensor:
         if self.gain is not None:
-            tensors = [t * w for t, w in zip(tensors, self.gain.unbind())]
+            tensors = _foreach.mul(tensors, self.gain.unbind())
         if self.reduction == 'none':
             return tensors
 
@@ -138,7 +139,7 @@ class MultiheadLoss(_Weighted):
             # Get actual support from data
             sizes = [F.support(o, t) for o, t in zip(o_parts, t_parts)]
             support = torch.stack(sizes)
-            (support,) = all_reduce(support, mean=True)
+            [support] = all_reduce(support, mean=True)
 
             if not self.renorm:  # Scale to world, not head size
                 # Implies `unit_sum` also OFF.
@@ -153,7 +154,7 @@ class MultiheadLoss(_Weighted):
                 support /= support.mean()
 
             # Scale each head
-            tensors = [w * t for w, t in zip(support.unbind(), tensors)]
+            tensors = _foreach.mul(tensors, support.unbind())
 
         return self._to_output(tensors)
 
@@ -259,7 +260,7 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
 
         # NOTE: support is computed for current rank
         support = F.support(outputs, targets)
-        (total_support,) = all_reduce(support, mean=True)
+        [total_support] = all_reduce(support, mean=True)
         if total_support is support:
             return loss
 

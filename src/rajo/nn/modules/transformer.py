@@ -6,7 +6,7 @@ __all__ = [
     'VitBlock',
 ]
 
-from typing import Final
+from typing import Final, cast
 
 import torch
 import torch.nn.functional as F
@@ -103,11 +103,14 @@ class Attention(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         # Optimized eval-only impl since Torch 1.12
         if _IS_TORCH_1_12 and not self.training and not self.reattention:
-            in_w, in_b, out_w, out_b = (
-                self.to_qkv[0].weight,
-                self.to_qkv[0].bias,
-                self.to_out[1].weight,
-                self.to_out[1].bias,
+            in_w, in_b, out_w, out_b = cast(
+                'tuple[Tensor, ...]',
+                (
+                    self.to_qkv[0].weight,
+                    self.to_qkv[0].bias,
+                    self.to_out[1].weight,
+                    self.to_out[1].bias,
+                ),
             )
             tensor_args = (x, in_w, in_b, out_w, out_b)
             if (

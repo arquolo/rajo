@@ -1,8 +1,9 @@
 __all__ = ['AdamW', 'Lamb', 'Lion', 'RAdam', 'SGDW']
 
 from collections import defaultdict
+from weakref import ref
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import InitVar, asdict, dataclass, field
+from dataclasses import InitVar, asdict, dataclass, field, fields
 from math import sqrt
 from typing import Any, NamedTuple, cast, final, overload
 
@@ -32,15 +33,11 @@ class SingleGroupOptimizer(Optimizer):
     def __post_init__(self, params: list[Parameter]) -> None:
         self.states = {p: [] for p in params}
 
+        # torch.optim.lr_scheduler compat
+        proxy = cast('dict[str, Any]', _DictLikeProxy(ref(self)))
+        self.param_groups = [proxy]
+
     # torch.optim.lr_scheduler compat
-
-    @property
-    def param_groups(self) -> list[dict]:
-        return cast(list[dict], [self])
-
-    @param_groups.setter
-    def _(self, value):
-        raise RuntimeError
 
     @property
     def defaults(self) -> dict:
@@ -53,39 +50,6 @@ class SingleGroupOptimizer(Optimizer):
     @defaults.setter
     def defaults(self, value) -> None:
         raise RuntimeError
-
-    def setdefault(self, key: str, default):
-        if key in SingleGroupOptimizer.__dataclass_fields__:  # private
-            raise KeyError(key)
-        if (v := self.__dict__.get(key, _sentinel)) is not _sentinel:
-            return v
-        return self.extras.setdefault(key, default)
-
-    def __getitem__(self, key: str):
-        if key == 'params':  # expose
-            return [*self.states]
-        if key in SingleGroupOptimizer.__dataclass_fields__:  # private
-            raise KeyError(key)
-        if (v := self.__dict__.get(key, _sentinel)) is not _sentinel:
-            return v
-        return self.extras[key]
-
-    def __setitem__(self, key: str, value) -> None:
-        if key in SingleGroupOptimizer.__dataclass_fields__:  # private
-            raise KeyError(key)
-        if key in self.__dict__:
-            self.__dict__[key] = value
-        else:
-            self.extras[key] = value
-
-    def keys(self) -> list[str]:
-        return [
-            'params',
-            *sorted(
-                set(self.__dict__.keys() | self.extras.keys())
-                - set(SingleGroupOptimizer.__dataclass_fields__)
-            ),
-        ]
 
     # core API
 
@@ -498,3 +462,49 @@ class Lamb(SingleGroupOptimizer):
             _foreach.mul_(update, trust_ratio.unbind())
 
         _foreach.add_(params, update, alpha=-step_size)
+
+
+# ------------------- torch.optim.lr_scheduler compat ------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class _DictLikeProxy:
+    sgo: ref[SingleGroupOptimizer]
+
+    def _get_state(
+        self,
+    ) -> tuple[SingleGroupOptimizer, dict[str, Any]]:
+        obj = self.sgo()
+        assert obj
+        return obj, obj.__dict__
+
+    def keys(self) -> list[str]:
+        g, items = self._get_state()
+        return sorted({'params', *items, *g.extras} - _forbidden_keys)
+
+    def setdefault(self, key: str, default):
+        g, items = self._get_state()
+        assert key not in _forbidden_keys
+        if (v := items.get(key, _sentinel)) is not _sentinel:
+            return v
+        return g.extras.setdefault(key, default)
+
+    def __getitem__(self, key: str):
+        g, items = self._get_state()
+        if key == 'params':  # expose
+            return list(g.states)
+        assert key not in _forbidden_keys
+        if (v := items.get(key, _sentinel)) is not _sentinel:
+            return v
+        return g.extras[key]
+
+    def __setitem__(self, key: str, value) -> None:
+        g, items = self._get_state()
+        assert key not in _forbidden_keys
+        if key in items:
+            items[key] = value
+        else:
+            g.extras[key] = value
+
+
+_forbidden_keys = {f.name for f in fields(SingleGroupOptimizer)}

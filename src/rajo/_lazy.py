@@ -13,21 +13,21 @@ def materialize(model: nn.Module, *args, **kwargs) -> None:
     Materialize all the lazy modules within model.
     Safely call forward() if args or kwargs are passed.
     """
-    moduls = {
+    modules = {
         name: m
         for name, m in model.named_modules()
         if isinstance(m, lazy.LazyModuleMixin)
     }
-    if not moduls:
+    if not modules:
         return
 
     uninitialized = {
         name: m
-        for name, m in moduls.items()
+        for name, m in modules.items()
         if m.has_uninitialized_params()  # type: ignore[misc]
     }
     if not uninitialized:  # Complete initialization without forward() call
-        for m in moduls.values():
+        for m in modules.values():
             _materialize_cls(m)  # type: ignore[arg-type]
         return
 

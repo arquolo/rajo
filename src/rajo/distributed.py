@@ -19,6 +19,8 @@ import torch.distributed as dist
 from torch import Tensor, nn
 from torch.multiprocessing.spawn import start_processes
 
+from . import _foreach
+
 type _TrainFn[**P] = Callable[Concatenate[nn.Module, P], None]
 
 # -------------------------------- primitives --------------------------------
@@ -46,7 +48,7 @@ def all_reduce(*tensors: Tensor, mean: bool = False) -> tuple[Tensor, ...]:
     if (ddp := get_ddp_info()) and ddp.world > 1:
         tensors = _AllReduceAsyncSum.apply(*tensors)
         if mean:
-            tensors = tuple(t / ddp.world for t in tensors)
+            tensors = tuple(_foreach.div(tensors, ddp.world))
     return tensors
 
 

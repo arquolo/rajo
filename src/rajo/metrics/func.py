@@ -121,7 +121,7 @@ def soft_confusion(
         neg = y.bincount(minlength=2).float() - pos
         mat = torch.stack([neg, pos], 1)
 
-    (mat,) = all_reduce(mat)
+    [mat] = all_reduce(mat)
     if normalize:
         mat = mat / mat.sum().clamp_min(_EPS)
     return mat
