@@ -10,7 +10,7 @@ name = "rajo"
 version = "0.3.2"
 description = "Pytorch training utilities and models"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12, <3.15"
 license = {file = "LICENSE"}
 keywords = []
 authors = [
@@ -25,6 +25,8 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     "packaging",
@@ -45,6 +47,7 @@ homepage = "https://github.com/arquolo/rajo"
 [project.optional-dependencies]
 graph = ["graphviz"]
 dither = ["numba"]
+fusion = ["timm~=1.0", "segmentation-models-pytorch~=0.5.0"]
 all = ["rajo[graph]", "matplotlib"]
 trt = ["torch-tensorrt"]
 dev-core = [
