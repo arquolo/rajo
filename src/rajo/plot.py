@@ -1,7 +1,7 @@
 __all__ = ['plot_model']
 
 import functools
-from collections.abc import Iterable, Iterator, Mapping, Callable
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import ExitStack
 from typing import Any
 
@@ -182,8 +182,9 @@ class Builder:
         # -------- start node --------
         if not self.nesting:
             return
+        _, _, label = name.rpartition('.')
         scope = graphviz.Digraph(name=self._mangle(name))
-        scope.attr(label=f'{name.split(".")[-1]}:{type(module).__name__}')
+        scope.attr(label=f'{label}:{type(module).__name__}')
         self.stack.append(scope)
 
     def exit_(self, module: nn.Module, _, ys) -> None:

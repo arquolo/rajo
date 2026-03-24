@@ -155,10 +155,11 @@ class PackedNargmaxRavel:
         ```
         But 2-3x faster.
         """
-        if self._num_heads == 1:
-            return scores.argmax(-1, keepdims=True)
-
         *rshape, cc = scores.shape
+        if self._num_heads == 1:
+            dtype = np.min_scalar_type(cc - 1)
+            return scores.argmax(-1, out=np.empty(rshape, dtype))
+
         scores = scores.reshape(-1, cc)  # (n cc)
 
         # `argmax` chunks
@@ -174,7 +175,7 @@ class PackedNargmaxRavel:
             _, cs = (amax.repeat(self._heads, axis=1) == scores).nonzero()
             h = self._idx[cs]
             i = np.r_[True, h[:-1] != h[1:]]  # use first maximum
-            r = cs[i].reshape(scores.shape[0], self._num_heads)  # (n h)
+            r = cs[i].reshape(-1, self._num_heads)  # (n h)
 
         # Ravel index
         r = cv2.transform(r[None, :, :], self._scale)  # (n)
