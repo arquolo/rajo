@@ -29,13 +29,14 @@ class ReAttention(nn.Sequential):
     """Re-Attention from [DeepViT](https://arxiv.org/abs/2103.11886)"""
 
     def __init__(self, heads: int) -> None:
+        ln = nn.Linear(heads, heads, bias=False)
         super().__init__(
             Rearrange('b h i j -> b i j h'),
-            nn.Linear(heads, heads, bias=False),
+            ln,
             nn.LayerNorm(heads),
             Rearrange('b i j h -> b h i j'),
         )
-        nn.init.normal_(self[1].weight)
+        nn.init.normal_(ln.weight)
 
 
 class Attention(nn.Module):

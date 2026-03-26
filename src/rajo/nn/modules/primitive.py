@@ -12,7 +12,7 @@ __all__ = [
 ]
 
 from collections.abc import Iterable
-from typing import Final
+from typing import Final, Literal
 
 import torch
 import torch.nn.functional as TF
@@ -21,6 +21,8 @@ from torch import Tensor, jit, nn
 from .. import functional as F
 from .. import ops
 from .util import to_buffers
+
+type _PaddingMode = Literal['zeros', 'reflect', 'replicate', 'circular']
 
 
 class View(nn.Module):
@@ -174,7 +176,7 @@ class BlurPool2d(nn.Conv2d):
         kernel: int = 4,
         stride: int = 2,
         padding: int = 1,
-        padding_mode: str = 'reflect',
+        padding_mode: _PaddingMode = 'reflect',
     ):
         super().__init__(
             dim, dim, kernel, stride, padding, 1, dim, False, padding_mode

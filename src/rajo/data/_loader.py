@@ -274,7 +274,7 @@ def get_loader(
     - mp - Whether to use multiprocessing or not.
     """
     if max_workers is None:
-        max_workers = max_cpu_count(_NUM_CPUS, mp)
+        max_workers = max_cpu_count(_NUM_CPUS, mp=mp)
 
     if isinstance(dataset, IterableDataset):
         if not mp and max_workers != 0:

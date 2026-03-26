@@ -27,10 +27,10 @@ def _apply[T](xs: T, fn: Callable[[Tensor], Any]) -> T:
         return fn(xs)
 
     if isinstance(xs, str | bytes | np.ndarray):
-        return xs  # type: ignore
+        return xs
 
     if isinstance(xs, tuple) and hasattr(xs, '_fields'):  # namedtuple
-        return type(xs)(*(_apply(x, fn) for x in xs))  # type: ignore
+        return type(xs)(*(_apply(x, fn) for x in xs))
     if isinstance(xs, Mapping):
         return dict(_apply(kv, fn) for kv in xs.items())  # type: ignore
     if isinstance(xs, Iterable):

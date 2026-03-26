@@ -106,9 +106,9 @@ def _pad_conv_sym_same(net: nn.Module) -> nn.Module:
         )
 
     with torch.no_grad():
-        loc = ..., *map(slice, net.kernel_size)
+        loc = map(slice, net.kernel_size)
         r.weight.zero_()
-        r.weight[loc].copy_(net.weight)
+        r.weight[(..., *loc)].copy_(net.weight)
         if net.bias is not None and r.bias is not None:
             r.bias.copy_(net.bias)
     return r
@@ -117,16 +117,17 @@ def _pad_conv_sym_same(net: nn.Module) -> nn.Module:
 # ---------------------------- batch norm fusion -----------------------------
 
 
-def _fuse_conv_bn_eval[C: nn.modules.conv._ConvNd](
-    conv: C,
+def _fuse_conv_bn_eval[M: nn.Module](
+    conv: M,
     bn: nn.Module,
     update_weights: bool = True,
-) -> tuple[C, nn.Module]:
+) -> tuple[M, nn.Module]:
     # TODO: allow rebuild without weight update
     if not isinstance(bn, nn.BatchNorm2d):
         return conv, bn
 
     if update_weights:
+        assert isinstance(conv, nn.modules.conv._ConvNd)
         conv = fuse_conv_bn_eval(conv.double(), bn.double()).float()
 
     ms: list[nn.Module] = []
@@ -394,20 +395,20 @@ def _hook_timm_models(mod) -> None:
 
 def _hook_smp_base(mod) -> None:
     if TYPE_CHECKING:
-        import segmentation_models_pytorch.base.modules as mod  # noqa
+        import segmentation_models_pytorch.base.modules as mod  # type: ignore[no-redef]  # noqa
     flatten.register(mod.Activation, _unpack_act)
     flatten.register(mod.Attention, _unpack_attn)
 
 
 def _hook_smp_resnet(mod) -> None:
     if TYPE_CHECKING:
-        import segmentation_models_pytorch.encoders.resnet as mod  # noqa
+        import segmentation_models_pytorch.encoders.resnet as mod  # type: ignore[no-redef]  # noqa
     fuse_conv_bn.register(mod.ResNetEncoder, _fuse_resnet_encoder)
 
 
 def _hook_smp_fpn(mod) -> None:
     if TYPE_CHECKING:
-        import segmentation_models_pytorch.decoders.fpn.decoder as mod  # noqa
+        import segmentation_models_pytorch.decoders.fpn.decoder as mod  # type: ignore[no-redef]  # noqa
     flatten.register(mod.SegmentationBlock, _unpack_seg_block)
     flatten.register(mod.Conv3x3GNReLU, _unpack_conv_gn_gelu)
 
