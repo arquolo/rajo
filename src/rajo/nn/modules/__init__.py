@@ -19,7 +19,13 @@ from .conv import (
     mobilenet_v3_block,
     resnest_block,
 )
-from .head import MultiheadAdapter, MultiheadMaxAdapter, MultiheadProb, Prob
+from .head import (
+    MultiheadAdapter,
+    MultiheadMaxAdapter,
+    MultiheadProb,
+    MultiheadSoftmax,
+    Prob,
+)
 from .lazy import LazyBias2d, LazyConv2dWs, LazyGroupNorm, LazyLayerNorm
 from .loss import (
     BCEWithLogitsLoss,
@@ -72,6 +78,7 @@ __all__ = [
     'MultiheadLoss',
     'MultiheadMaxAdapter',
     'MultiheadProb',
+    'MultiheadSoftmax',
     'Noise',
     'Prob',
     'ResNeXtBlock',
