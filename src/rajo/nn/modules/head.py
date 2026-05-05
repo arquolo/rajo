@@ -201,30 +201,30 @@ class MultiheadSoftmax(nn.Module):
             self.m2o = None
 
     def forward(self, x: Tensor) -> Tensor:
-        x = x.transpose(self.dim, -1)  # For convenience
         if not self.from_log:
             x = x.clamp_min(self.eps).log()
 
-        c2h = self.c2h
-        if c2h is not None:
-            shape = list(x.shape)
-            shape[-1] = self.nheads
-            maxes = x.new_zeros(shape).scatter_reduce_(
-                dim=-1,
-                index=c2h.view([1] * (x.ndim - 1) + [-1]).expand_as(x),
+        if (c2h := self.c2h) is not None:
+            mshape = list(x.shape)
+            mshape[self.dim] = self.nheads
+            ishape = [1] * x.ndim
+            ishape[self.dim] = -1
+            maxes = x.new_zeros(mshape).scatter_reduce_(
+                dim=self.dim,
+                index=c2h.view(ishape).expand_as(x),
                 src=x,
                 reduce='max',
             )
-            x = torch.cat([x, maxes], dim=-1)
+            x = torch.cat([x, maxes], dim=self.dim)
 
-        x = F.linear(x, self.i2m)  # Sum in logspace is multiply for probs
-        x = x.softmax(-1)
+        eq = _EINSUM_MM_EQ[x.ndim][self.dim]
 
-        m2o = self.m2o
-        if m2o is not None:
-            x = F.linear(x, m2o)  # Sum probs to make true labels
+        x = torch.einsum(eq, x, self.i2m)  # Logspace sum is probs multiply
+        x = x.softmax(self.dim)
 
-        return x.transpose(-1, self.dim)
+        if (m2o := self.m2o) is not None:
+            return torch.einsum(eq, x, m2o)  # Sum probs to make true labels
+        return x
 
 
 def _factorize_lut(lut: Tensor) -> tuple[Tensor, Tensor]:
@@ -271,3 +271,19 @@ def _make_absolute_offsets(ids: Tensor, heads: Sequence[int]) -> Tensor:
         offsets[:-1] + ids,
         offsets[-1] + torch.arange(len(heads)),
     )
+
+
+_EINSUM_MM_EQ: list[list[str]] = [  # x.ndim -> dim -> einsum eq
+    [],  # 0D
+    ['c,fc->f'],  # 1D
+    ['ci,fc->fi', 'ic,fc->if'],  # 2D
+    ['cij,fc->fij', 'icj,fc->ifj', 'ijc,fc->ijf'],  # 3D
+    ['cijk,fc->fijk', 'icjk,fc->ifjk', 'ijck,fc->ijfk', 'ijkc,fc->ijkf'],  # 4D
+    [  # 5D
+        'cijkl,fc->fijkl',
+        'icjkl,fc->ifjkl',
+        'ijckl,fc->ijfkl',
+        'ijkcl,fc->ijkfl',
+        'ijklc,fc->ijklf',
+    ],
+]
