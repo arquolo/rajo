@@ -143,20 +143,28 @@ def broadcast_call[**P, R](fn: Callable[P, R], /) -> Callable[P, R]:
             # Master process, so no neighbors to share results with
             return fn(*args, **kwargs)
 
+        ret: list[R] | BaseException | None = None
+        handles = [b'']
+
         if ddp.rank == 0:  # Call and broadcast result to all neighbours
-            result = fn(*args, **kwargs)
-            handles = [bytes(ForkingPickler.dumps(result))]
-            dist.broadcast_object_list(handles, src=0)
+            try:
+                shared = ret = [fn(*args, **kwargs)]
+            except BaseException as exc:  # noqa: BLE001
+                ret = exc
+                shared = exc.with_traceback(None)
+            handles[0] = bytes(ForkingPickler.dumps(shared))
 
-        else:  # Gather result from #0
-            handles = [b'']
-            dist.broadcast_object_list(handles, src=0)
+        dist.broadcast_object_list(handles, src=0)
+        if not handles[0]:
+            raise RuntimeError(
+                '"torch.distributed.broadcast_object_list" failed'
+            )
 
-            assert handles[
-                0
-            ], '"torch.distributed.broadcast_object_list" failed'
-            result = pickle.loads(handles[0])
-
-        return result
+        if ret is None:  # Gather result from #0
+            ret = pickle.loads(handles[0])
+        assert ret is not None
+        if isinstance(ret, list):
+            return ret[0]
+        raise ret
 
     return update_wrapper(wrapper, fn)

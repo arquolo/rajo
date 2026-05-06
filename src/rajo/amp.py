@@ -151,9 +151,8 @@ class _ScalingGrads(Grads):
             return
 
         if _PRIVATE:
-            steps, self._steps = self._steps, getattr(
-                self._opt, '_step_count', _NAN
-            )
+            steps = self._steps
+            self._steps = getattr(self._opt, '_step_count', _NAN)
             if steps == self._steps:  # No step done
                 return
         else:

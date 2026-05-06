@@ -37,24 +37,20 @@ class ConvCtx:
         return (stride if self.parity == 0 else 1) + 2 * overlap
 
     def _get_p(self, kernel: int, stride: int, dilation: int) -> int:
-        assert (
-            stride == 1 or dilation == 1
-        ), 'one of stride/dilation should be always 1'
+        if stride != 1 and dilation != 1:
+            raise ValueError('one of stride/dilation should be always 1')
         if stride == 1 and kernel % 2 == 0 and dilation % 2 != 0:
             raise ValueError('Even kernel with odd dilation is not supported')
 
         if self.parity == 0:
+            if kernel < stride:
+                raise ValueError('"kernel >= stride" is violated')
             total_padding = kernel - stride
-            assert (
-                total_padding >= 0
-            ), 'kernel should be same or greater than stride'
-            assert total_padding >= 0
         else:
             total_padding = kernel - 1
 
-        assert (
-            total_padding % 2 == 0
-        ), 'padding is not symmetric, offset kernel by 1'
+        if total_padding % 2:
+            raise ValueError('padding is not symmetric, offset kernel by 1')
         if not self.pad:
             return 0
         return (total_padding // 2) * dilation

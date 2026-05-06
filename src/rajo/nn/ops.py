@@ -15,9 +15,7 @@ def laplace_kernel(size: int, /, *, normalize: bool = True) -> Tensor:
     if size % 2 != 1:
         raise ValueError(f'Kernel size should be odd. Got {size}')
     if size > 31:
-        raise ValueError(
-            'Kernel size should be less or equal then 31. ' f'Got {size}'
-        )
+        raise ValueError(f'Kernel size <= 31 is violated. Got {size}')
 
     effective_size = max(3, size)
     offset = effective_size // 2

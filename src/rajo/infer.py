@@ -54,7 +54,7 @@ class MultiheadIndexer(Indexer):
         heads: Sequence[int],
         minimize: bool = True,
     ) -> None:
-        num_heads = len(heads)
+        nheads = len(heads)
         self._total = sum(heads)
 
         vox = np.empty(heads, 'u1')  # 1-byte itemsize
@@ -65,9 +65,7 @@ class MultiheadIndexer(Indexer):
         for t, sets in labels.items():
             lut = np.zeros(heads, np.bool_)
             for multi in sets:
-                assert (
-                    len(multi) <= num_heads
-                ), f'Index {multi} is deeper than head count ({num_heads})'
+                assert len(multi) <= nheads, f'{multi} is longer than {heads=}'
                 loc = tuple(slice(None) if j == -1 else j for j in multi)
                 lut[loc] = True
             self.labels[t] = lut.ravel().nonzero()[0].astype(dtype)
@@ -110,9 +108,9 @@ class MultiheadIndexer(Indexer):
         scores: npt.NDArray[np.number],
     ) -> npt.NDArray[np.integer]:
         """Get index (*) of most probable class from class scores (* C)."""
-        assert (
-            scores.shape[-1] == self._total
-        ), f'Expected {self._total} channels, got {scores.shape[-1]}'
+        nc = scores.shape[-1]
+        if nc != self._total:
+            raise ValueError(f'Expected {self._total} channels, got {nc}')
 
         r = self._pnr(scores)
         return r if self.lut is None else self.lut[r]

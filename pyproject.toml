@@ -144,6 +144,9 @@ warn_unused_ignores = true
 
 # Format
 
+[tool.ruff.format]
+quote-style = "single"
+
 [tool.black]
 line-length = 79
 target-version = ['py312']

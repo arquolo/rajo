@@ -169,12 +169,16 @@ class SGDW(SingleGroupOptimizer):
     nesterov: bool = False
 
     def __post_init__(self, params) -> None:
-        assert self.lr >= 0
-        assert self.momentum >= 0
-        assert self.weight_decay >= 0
-        assert not self.nesterov or (
-            self.momentum > 0 and self.dampening == 0
-        ), 'Nesterov momentum requires a momentum and zero dampening'
+        if self.lr < 0.0:
+            raise ValueError(f'Invalid learning rate: {self.lr}')
+        if self.momentum < 0:
+            raise ValueError(f'Invalid momentum: {self.momentum}')
+        if self.weight_decay < 0:
+            raise ValueError(f'Invalid weight decay: {self.weight_decay}')
+        if self.nesterov and (self.momentum <= 0 or self.dampening != 0):
+            raise ValueError(
+                'Nesterov momentum requires a momentum and zero dampening'
+            )
         super().__post_init__(params)
 
     def device_step(
@@ -226,12 +230,13 @@ class AdamW(SingleGroupOptimizer):
     amsgrad: bool = False
 
     def __post_init__(self, params) -> None:
-        assert self.lr >= 0.0
-        assert self.eps >= 0.0
+        if self.lr < 0.0:
+            raise ValueError(f'Invalid learning rate: {self.lr}')
+        if self.eps < 0:
+            raise ValueError(f'Invalid epsilon: {self.eps}')
         for i, beta in enumerate(self.betas):
-            assert (
-                0.0 <= beta < 1.0
-            ), f'Invalid beta at index {i}: {self.betas}'
+            if not (0.0 <= beta < 1.0):
+                raise ValueError(f'Invalid beta at index {i}: {self.betas}')
         super().__post_init__(params)
 
     def common_step_args(self) -> dict:

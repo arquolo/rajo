@@ -111,26 +111,21 @@ class MultiheadLoss(_Weighted):
     def forward(
         self, outputs: Tensor, targets: Tensor
     ) -> Tensor | list[Tensor]:
-        assert (
-            outputs.shape[0] == targets.shape[0]
-        ), 'outputs/targets differ in batch size'
-        assert (
-            outputs.shape[1] == self.channels
-        ), 'output channel count does not match head dims'
-        assert targets.shape[1] in (self.channels, self.num_heads), (
-            'target channel count should match output, '
-            'or be equal to head count'
-        )
-        assert (
-            outputs.shape[2:] == targets.shape[2:]
-        ), 'outputs/targets differ in sample size'
+        assert outputs.shape[0] == targets.shape[0]
+        assert outputs.shape[1] == self.channels
+        assert outputs.shape[2:] == targets.shape[2:]
 
         o_parts = outputs.split(self.head_dims, dim=1)
-        t_parts = (
-            targets.unbind(dim=1)
-            if targets.shape[1] == self.num_heads
-            else targets.split(self.head_dims, dim=1)
-        )
+
+        if targets.shape[1] == self.num_heads:  # hard labels
+            t_parts = targets.unbind(dim=1)
+        elif targets.shape[1] == self.channels:  # soft labels
+            t_parts = targets.split(self.head_dims, dim=1)
+        else:
+            raise ValueError(
+                'target channel count should match output, '
+                'or be equal to head count'
+            )
 
         tensors = [self.base_loss(o, t) for o, t in zip(o_parts, t_parts)]
 

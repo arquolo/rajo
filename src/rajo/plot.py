@@ -93,7 +93,7 @@ class Builder:
             if self.nesting:
                 label = f'{parts[-1]}\n{label}'
             else:
-                label = f'{'.'.join(parts[1:])}\n{label}'
+                label = f'{".".join(parts[1:])}\n{label}'
         else:
             sg = self.stack[0]  # unnamed, thus use top level graph
 

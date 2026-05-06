@@ -287,8 +287,7 @@ def get_loader(
 
         if (ddp := get_ddp_info()) and ddp.world > 1:
             raise ValueError(
-                'For iterable-style datasets distributed use is not '
-                'supported'
+                'For iterable-style datasets distributed use is not supported'
             )
 
         if not max_workers:

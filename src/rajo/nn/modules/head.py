@@ -7,6 +7,7 @@ __all__ = [
 ]
 
 from collections.abc import Iterable, Sequence
+from functools import cache
 from typing import Final
 
 import torch
@@ -190,41 +191,53 @@ class MultiheadSoftmax(nn.Module):
         )
         self.register_buffer('i2m', i2m)
 
-        out_channels = int(lut.max()) + 1
-        if (
-            mid_channels != out_channels
-            or (class_ids != torch.arange(out_channels)).any()
+        self.out_channels = int(lut.max()) + 1
+        if (  # Non final targets, requires conversion
+            mid_channels != self.out_channels
+            or (class_ids != torch.arange(self.out_channels)).any()
         ):
-            m2o = F.one_hot(class_ids, out_channels).T.float()
-            self.register_buffer('m2o', m2o)
+            self.register_buffer('m2o', class_ids)
         else:
             self.m2o = None
 
     def forward(self, x: Tensor) -> Tensor:
         if not self.from_log:
-            x = x.clamp_min(self.eps).log()
+            x = x.clamp_min(self.eps)
+            x = x.log_() if _allow_inplace(self, x) else x.log()
 
         if (c2h := self.c2h) is not None:
-            mshape = list(x.shape)
-            mshape[self.dim] = self.nheads
             ishape = [1] * x.ndim
             ishape[self.dim] = -1
-            maxes = x.new_zeros(mshape).scatter_reduce_(
-                dim=self.dim,
-                index=c2h.view(ishape).expand_as(x),
-                src=x,
-                reduce='max',
-            )
+            h_index = c2h.view(ishape).expand_as(x)
+
+            mshape = list(x.shape)
+            mshape[self.dim] = self.nheads
+            maxes = x.new_zeros(mshape)
+
+            if _allow_inplace(self, x):
+                maxes.scatter_reduce_(self.dim, h_index, x, 'max')
+            else:
+                maxes = maxes.scatter_reduce(self.dim, h_index, x, 'max')
             x = torch.cat([x, maxes], dim=self.dim)
 
-        eq = _EINSUM_MM_EQ[x.ndim][self.dim]
-
+        eq = _make_eq(x.ndim, self.dim)
         x = torch.einsum(eq, x, self.i2m)  # Logspace sum is probs multiply
         x = x.softmax(self.dim)
 
-        if (m2o := self.m2o) is not None:
-            return torch.einsum(eq, x, m2o)  # Sum probs to make true labels
-        return x
+        if (m2o := self.m2o) is None:
+            return x
+
+        # Extract target labels
+        oshape = list(x.shape)
+        oshape[self.dim] = self.out_channels
+        ret = x.new_zeros(oshape)
+
+        # Sum probs to make true labels
+        if _allow_inplace(self, x):
+            ret.index_add_(self.dim, m2o, x)
+        else:
+            ret = ret.index_add(self.dim, m2o, x)
+        return ret
 
 
 def _factorize_lut(lut: Tensor) -> tuple[Tensor, Tensor]:
@@ -273,17 +286,17 @@ def _make_absolute_offsets(ids: Tensor, heads: Sequence[int]) -> Tensor:
     )
 
 
-_EINSUM_MM_EQ: list[list[str]] = [  # x.ndim -> dim -> einsum eq
-    [],  # 0D
-    ['c,fc->f'],  # 1D
-    ['ci,fc->fi', 'ic,fc->if'],  # 2D
-    ['cij,fc->fij', 'icj,fc->ifj', 'ijc,fc->ijf'],  # 3D
-    ['cijk,fc->fijk', 'icjk,fc->ifjk', 'ijck,fc->ijfk', 'ijkc,fc->ijkf'],  # 4D
-    [  # 5D
-        'cijkl,fc->fijkl',
-        'icjkl,fc->ifjkl',
-        'ijckl,fc->ijfkl',
-        'ijkcl,fc->ijkfl',
-        'ijklc,fc->ijklf',
-    ],
-]
+def _allow_inplace(mod: nn.Module, *xs: Tensor) -> bool:
+    return not (
+        mod.training
+        and torch.is_grad_enabled()
+        and any(x.requires_grad for x in xs)
+    )
+
+
+@cache
+def _make_eq(ndim: int, dim: int) -> str:
+    if ndim > 15:
+        raise ValueError(f'Input is too deep: {ndim}')
+    axes = 'abcdefghijklmno'[:ndim]
+    return f'{axes.replace(axes[dim], "q")},pq->{axes.replace(axes[dim], "p")}'
