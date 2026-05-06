@@ -1,8 +1,6 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
-import numpy as np
 import torch
-from scipy.ndimage import distance_transform_edt
 from torch import Tensor, einsum
 
 # --------------------------------- set ops ----------------------------------
@@ -25,20 +23,6 @@ def _is_onehot(t: Tensor, dim: int = 1) -> bool:
     return _is_unit_normalized(t, dim) and _is_subset(t, [0, 1])
 
 
-# -------------------------------- edt ---------------------------------------
-
-
-# TODO: use pure torch impl
-def torch_edt(mask: Tensor, sampling: tuple[float, ...] | None) -> Tensor:
-    npy = mask.detach().cpu().numpy()
-
-    npy_ = distance_transform_edt(npy, sampling)
-    assert isinstance(npy_, np.ndarray)
-
-    npy = npy_.astype('f')
-    return torch.from_numpy(npy).to(device=mask.device)
-
-
 # ------------------------------ onehot --------------------------------------
 
 
@@ -59,33 +43,24 @@ def index_to_onehot(indices: Tensor, num_classes: int) -> Tensor:
 
 
 def onehot_to_distance(
-    bchw: Tensor,
-    sampling: tuple[float, ...] | None = None,
-    dtype=None,
+    pos: Tensor,
+    sampling: Sequence[float] | None = None,
 ) -> Tensor:
     """(b c *) onehot probs -> (b c *) distances"""
-    assert _is_onehot(bchw, dim=1)
-    ret = torch.zeros_like(bchw, dtype=dtype)
+    assert _is_onehot(pos, dim=1)
 
-    # TODO: remove loop to make GPU-friendly
-    for b, chw in enumerate(bchw.bool().unbind()):
-        for c, pos in enumerate(chw.unbind()):  # pos is (h w) of bools
-            if pos.any():
-                neg = ~pos
-                neg_distance = torch_edt(neg, sampling)
-                pos_distance = torch_edt(pos, sampling)
-                ret[b, c] = neg_distance * neg - (pos_distance - 1) * pos
-            # The idea is to leave blank the negative classes
-            # since this is one-hot encoded,
-            # another class will supervise that pixel
-
-    return ret
+    # The idea is to leave blank the negative classes
+    # since this is one-hot encoded,
+    # another class will supervise that pixel
+    neg = ~pos
+    pos_distance = euclidean_distance_transform(pos, ndim=2, vx=sampling)
+    neg_distance = euclidean_distance_transform(neg, ndim=2, vx=sampling)
+    return neg_distance * neg + (1 - pos_distance) * pos
 
 
 def onehot_to_hd_distances(
     bchw: Tensor,
-    sampling: tuple[float, ...] | None = None,
-    dtype=None,
+    sampling: Sequence[float] | None = None,
 ) -> Tensor:
     """
     Used for https://arxiv.org/pdf/1904.10030.pdf,
@@ -94,15 +69,7 @@ def onehot_to_hd_distances(
     (b c *) onehot probs -> (b c *) distances
     """
     assert _is_onehot(bchw, dim=1)
-
-    # TODO: remove loop to make GPU-friendly
-    ret = torch.zeros_like(bchw, dtype=dtype)
-    for b, chw in enumerate(bchw.bool().unbind()):
-        for c, pos in enumerate(chw.unbind()):  # pos is (h w) of bools
-            if pos.any():
-                ret[b, c] = torch_edt(pos, sampling)
-
-    return ret
+    return euclidean_distance_transform(bchw, ndim=2, vx=sampling)
 
 
 # ------------------------------ losses -----------------------------------
@@ -230,3 +197,142 @@ class FocalLoss:
         loss = -einsum('bchw,bchw,bchw->', w, target, log_p)
         loss /= target.sum() + self.eps
         return loss
+
+
+# --------------------------- EDT -----------------------
+
+
+def euclidean_distance_transform(
+    x: Tensor, ndim: int | None = None, vx: Sequence[float] | None = None
+) -> Tensor:
+    """Compute the Euclidean distance transform of a binary image
+
+    Parameters
+    ----------
+    x : (..., *spatial) tensor
+        Input tensor. Zeros will stay zero, and the distance will
+        be propagated into nonzero voxels.
+    ndim : int, default=`x.dim()`
+        Number of spatial dimensions
+    vx : [sequence of] float, default=1
+        Voxel size
+
+    Returns
+    -------
+    d : (..., *spatial) tensor
+        Distance map
+
+    References
+    ----------
+    ..[1] "Distance Transforms of Sampled Functions"
+          Pedro F. Felzenszwalb & Daniel P. Huttenlocher
+          Theory of Computing (2012)
+          https://www.theoryofcomputing.org/articles/v008a019/v008a019.pdf
+    """
+    dtype = x.dtype if x.dtype.is_floating_point else torch.get_default_dtype()
+    x = x.to(dtype, copy=True)
+    x.masked_fill_(x > 0, float('inf'))
+    ndim = ndim or x.ndim
+
+    vx = [1] if vx is None else list(vx)
+    if ndim is not None:
+        vx = (vx + max(ndim - len(vx), 0) * [vx[-1]])[:ndim]
+
+    if set(x.shape[-ndim:]) == {1}:  # Only 1s in shape
+        return x
+
+    if x.shape[-ndim] != 1:
+        x = _l1dt_1d_(x.movedim(-ndim, 0), vx[0]).movedim(0, -ndim)
+    if len(set(x.shape[-ndim + 1 :]) - {1}) <= 1:  # Only 1s in shape
+        return x.abs()
+
+    x.square_()
+    for d, w in enumerate(vx[1:], -ndim + 1):
+        if x.shape[d] != 1:
+            x = _edt_1d(x.movedim(d, 0), d, w * w).movedim(0, d)
+    return x.sqrt_()
+
+
+@torch.jit.script
+def _l1dt_1d_(f: Tensor, w: float = 1.0):
+    """Algorithm 2 in "Distance Transforms of Sampled Functions"
+    Pedro F. Felzenszwalb & Daniel P. Huttenlocher
+    Theory of Computing (2012)
+    https://www.theoryofcomputing.org/articles/v008a019/v008a019.pdf
+    """
+    size = f.shape[0]
+    for q in range(1, size):
+        f[q] = torch.min(f[q], f[q - 1] + w)
+    for q in range(size - 2, -1, -1):
+        f[q] = torch.min(f[q], f[q + 1] + w)
+    return f
+
+
+@torch.jit.script
+def _edt_1d(f: Tensor, w2: float = 1.0) -> Tensor:
+    """Algorithm 1 in "Distance Transforms of Sampled Functions"
+    Pedro F. Felzenszwalb & Daniel P. Huttenlocher
+    Theory of Computing (2012)
+    https://www.theoryofcomputing.org/articles/v008a019/v008a019.pdf
+    """
+    f_len = f.shape[0]
+
+    # rightmost parabola in lower envelope
+    k = f.new_zeros(f.shape[1:], dtype=torch.long)
+
+    # parabolas in lower envelope
+    v = f.new_zeros(f.shape, dtype=torch.long)
+
+    # boundaries between parabolas
+    z = f.new_empty([f_len + 1, *f.shape[1:]])
+
+    # compute lower envelope
+    z[0] = float('-inf')
+    z[1] = float('inf')
+    for q in range(1, f_len):
+        z, s = _edt_1d_intersection(f, v, z, k, q, w2)
+        zk = z.gather(0, k[None])[0]
+        mask = (k > 0) & (s <= zk)
+
+        while mask.any():
+            k.sub_(mask)
+
+            z, s = _edt_1d_intersection(f, v, z, k, q, w2)
+            zk = z.gather(0, k[None])[0]
+            mask = (k > 0) & (s <= zk)
+
+        s.masked_fill_(torch.isnan(s), float('-inf'))  # is this correct?
+
+        k.add_(1)
+        v.scatter_(0, k[None], q)
+        z.scatter_(0, k[None], s[None])
+        z.scatter_(0, k[None] + 1, float('inf'))
+
+    # fill in values of distance transform
+    k = f.new_zeros(f.shape[1:], dtype=torch.long)
+    d = torch.empty_like(f)
+    for q in range(f_len):
+        zk = z.gather(0, k[None] + 1)[0]
+        mask = zk < q
+
+        while mask.any():
+            k.add_(mask)
+            zk = z.gather(0, k[None] + 1)[0]
+            mask = zk < q
+
+        vk = v.gather(0, k[None])[0]
+        fvk = f.gather(0, vk[None])[0]
+        d[q] = w2 * (q - vk).square() + fvk
+
+    return d
+
+
+@torch.jit.script
+def _edt_1d_intersection(
+    f: Tensor, v: Tensor, z: Tensor, k: Tensor, q: int, w2: float = 1.0
+) -> tuple[Tensor, Tensor]:
+    vk = v.gather(0, k[None])[0]
+    fvk = f.gather(0, vk[None])[0]
+    s = (f[q] - fvk) / (w2 * (q - vk)) + (q + vk)
+    s = s / 2
+    return z, s
