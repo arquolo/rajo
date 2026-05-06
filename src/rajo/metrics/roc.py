@@ -9,6 +9,7 @@ __all__ = [
 ]
 
 from collections.abc import Callable
+from typing import TypedDict
 
 import torch
 import torch.nn.functional as F
@@ -18,6 +19,11 @@ from .base import Staged
 from .func import roc_confusion
 
 _EPS = torch.finfo(torch.float).eps
+
+
+class _ValueWithThreshold(TypedDict):
+    v: Tensor
+    t: Tensor
 
 
 class Confusion(Staged):
@@ -78,7 +84,7 @@ def t_sup(mat: Tensor) -> Tensor:
     return idx.float() / (mat.shape[0] - 1)
 
 
-def acc(mat: Tensor) -> dict[str, Tensor]:
+def acc(mat: Tensor) -> _ValueWithThreshold:
     """
     Probability value where `TP + TN = max`.
     Tx2x2 tensor to scalar.
@@ -89,7 +95,7 @@ def acc(mat: Tensor) -> dict[str, Tensor]:
     return _max_t(acc)
 
 
-def youden_j(mat: Tensor) -> dict[str, Tensor]:
+def youden_j(mat: Tensor) -> _ValueWithThreshold:
     """
     Max of Youden's J statistic (i.e. informedness).
     Computed as `max(tpr - fpr)`, or `max(2 * balanced accuracy - 1)`.
@@ -99,7 +105,7 @@ def youden_j(mat: Tensor) -> dict[str, Tensor]:
     return _max_t(tpr - fpr)
 
 
-def dice(mat: Tensor) -> dict[str, Tensor]:
+def dice(mat: Tensor) -> _ValueWithThreshold:
     """
     Dice score maximum.
     Tx2x2 tensor to scalar.
@@ -137,6 +143,6 @@ def t_otsu(mat: Tensor) -> Tensor:
     return t / (n - 1)
 
 
-def _max_t(xs: Tensor) -> dict[str, Tensor]:
+def _max_t(xs: Tensor) -> _ValueWithThreshold:
     value, idx = xs.max(0)
-    return {'': value, 't': idx.float() / (xs.shape[0] - 1)}
+    return {'v': value, 't': idx.float() / (xs.shape[0] - 1)}
