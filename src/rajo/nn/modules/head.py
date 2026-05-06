@@ -8,7 +8,7 @@ __all__ = [
 
 from collections.abc import Iterable, Sequence
 from functools import cache
-from typing import Final
+from typing import Final, Literal
 
 import torch
 import torch.nn.functional as F
@@ -53,49 +53,68 @@ class MultiheadProb(nn.Module):
 
 
 class MultiheadAdapter(nn.Module):
+    """
+    Parameters:
+    - in_channels
+    - heads - H sequences (one per each head)
+      of S[h] sequences (one per each head's channel)
+      of K[h,i] indices of new classes to build from (h,i) channel of input
+    """
+
+    nheads: Final[int]
+    heads: Final[list[int]]
+    c2h: Tensor  # input channel to head ID
     weight: Tensor
-    head_dims: Final[list[int]]
     eps: Final[float]
     from_logits: Final[bool]
 
     def __init__(
         self,
-        c: int,
-        heads: Sequence[Sequence[Iterable[int]]],
+        in_channels: int,
+        heads: Sequence[Sequence[Sequence[int]]],
         eps: float = 1e-7,
         from_logits: bool = False,
     ) -> None:
         super().__init__()
-        self.head_dims = [len(head) for head in heads]
+        self.nheads = len(heads)
 
-        total_labels = sum(self.head_dims)
-        weight = torch.zeros(total_labels, c)
-        for row, cs in zip(
-            weight.unbind(), (cs for head in heads for cs in head)
-        ):
-            for c_ in cs:
-                row[c_] = 1
+        head_sizes = [len(head) for head in heads]
+        self.heads = head_sizes
+
+        index = _unpack_groups(head_sizes)
+        self.register_buffer('index', index)
+
+        output_labels = [cs for head in heads for cs in head]
+        weight = torch.zeros(len(output_labels), in_channels)
+        for row, out_labels in zip(weight.unbind(), output_labels):
+            row[out_labels] = 1
         self.register_buffer('weight', weight)
 
         self.eps = eps
         self.from_logits = from_logits
 
     def forward(self, x: Tensor) -> Tensor:
-        if not self.from_logits:
+        if self.from_logits:
             x = x.softmax(dim=1)
+            x = _linear_nd(x, self.weight)
+            return x.clamp_min(self.eps).log()
+
         x = _linear_nd(x, self.weight)
 
-        if self.from_logits:  # Preserve logits
-            return x.clamp(self.eps, 1 - self.eps).log()
-
         # Per-head normalized probs
-        return torch.cat(
-            [h / h.sum(1, keepdim=True) for h in x.split(self.head_dims, 1)],
-            dim=1,
-        )
+        sums = _reduce_groups(1, x, self.c2h, self.nheads, 'sum')
+        normalized = [
+            h / h_sum[:, None, ...]
+            for h, h_sum in zip(
+                x.split(self.heads, 1), sums.unbind(1), strict=True
+            )
+        ]
+        return torch.cat(normalized, dim=1)
 
 
 class _SubsetMax(nn.Module):
+    """Maximum over selected channels, like `input[:, ids, ...].max(dim=1)`"""
+
     ids: Tensor | None
     default: Final[float]
 
@@ -113,8 +132,14 @@ class _SubsetMax(nn.Module):
 
 
 class MultiheadMaxAdapter(nn.ModuleList):
-    def __init__(self, heads: Iterable[Iterable[Sequence[int]]]) -> None:
-        super().__init__([_SubsetMax(f) for head in heads for f in head])
+    """Maximum over multiple series of selected channels.
+
+    Accepts series of selected channels,
+    each selection will get its own channel in output.
+    """
+
+    def __init__(self, ids_seq: Iterable[Sequence[int]]) -> None:
+        super().__init__([_SubsetMax(ids) for ids in ids_seq])
 
     def forward(self, x: Tensor) -> Tensor:
         return torch.stack([m(x) for m in self], dim=1)
@@ -132,9 +157,6 @@ def _linear_nd(
     return x.view(b, -1, *volume)
 
 
-# ---------------------------- multihead softmax -----------------------------
-
-
 class MultiheadSoftmax(nn.Module):
     """
     Convert logits to probabilities of set classes for multihead models.
@@ -146,6 +168,10 @@ class MultiheadSoftmax(nn.Module):
     Requires `input.shape[dim] == sum(lut.shape)`
     """
 
+    dim: Final[int]
+    nheads: Final[int]
+    from_log: Final[bool]
+    eps: Final[float]
     c2h: Tensor | None  # input channel to head ID, for maximum
     i2m: Tensor  # input channel to mid channel
     m2o: Tensor | None  # mid channel to output channel, optional
@@ -174,11 +200,7 @@ class MultiheadSoftmax(nn.Module):
         in_channels = sum(heads)
         if locs.max().item() >= in_channels:  # Requires max
             in_channels += self.nheads
-            c2h = (
-                torch.arange(self.nheads)
-                .repeat_interleave(torch.as_tensor(heads))
-                .long()
-            )
+            c2h = _unpack_groups(heads)
             self.register_buffer('c2h', c2h)
         else:
             self.c2h = None
@@ -206,18 +228,7 @@ class MultiheadSoftmax(nn.Module):
             x = x.log_() if _allow_inplace(self, x) else x.log()
 
         if (c2h := self.c2h) is not None:
-            ishape = [1] * x.ndim
-            ishape[self.dim] = -1
-            h_index = c2h.view(ishape).expand_as(x)
-
-            mshape = list(x.shape)
-            mshape[self.dim] = self.nheads
-            maxes = x.new_zeros(mshape)
-
-            if _allow_inplace(self, x):
-                maxes.scatter_reduce_(self.dim, h_index, x, 'max')
-            else:
-                maxes = maxes.scatter_reduce(self.dim, h_index, x, 'max')
+            maxes = _reduce_groups(self.dim, x, c2h, self.nheads, 'max')
             x = torch.cat([x, maxes], dim=self.dim)
 
         eq = _make_eq(x.ndim, self.dim)
@@ -238,6 +249,43 @@ class MultiheadSoftmax(nn.Module):
         else:
             ret = ret.index_add(self.dim, m2o, x)
         return ret
+
+
+# -------------------------------- utilities ---------------------------------
+
+
+def _unpack_groups(groups: Sequence[int]) -> Tensor:
+    counts = torch.as_tensor(groups)
+    return torch.arange(counts.shape[0]).repeat_interleave(counts)
+
+
+def _reduce_groups(
+    dim: int,
+    x: Tensor,
+    index: Tensor,
+    ngroups: int,
+    reduction: Literal['sum', 'prod', 'max'],
+) -> Tensor:
+    ishape = [1] * x.ndim
+    ishape[dim] = -1
+    index = index.view(ishape).expand_as(x)
+
+    shape = list(x.shape)
+    shape[dim] = ngroups
+    if reduction == 'sum':
+        ret = x.new_zeros(shape)
+        if _allow_inplace(None, x):
+            return ret.scatter_add_(dim, index, x)
+        return ret.scatter_add(dim, index, x)
+
+    ret = (
+        x.new_ones(shape)
+        if reduction == 'prod'
+        else x.new_full(shape, float('-inf'))
+    )
+    if _allow_inplace(None, x):
+        return ret.scatter_reduce_(dim, index, x, reduction)
+    return ret.scatter_reduce(dim, index, x, reduction)
 
 
 def _factorize_lut(lut: Tensor) -> tuple[Tensor, Tensor]:
@@ -286,9 +334,9 @@ def _make_absolute_offsets(ids: Tensor, heads: Sequence[int]) -> Tensor:
     )
 
 
-def _allow_inplace(mod: nn.Module, *xs: Tensor) -> bool:
+def _allow_inplace(mod: nn.Module | None, *xs: Tensor) -> bool:
     return not (
-        mod.training
+        (mod is None or mod.training)
         and torch.is_grad_enabled()
         and any(x.requires_grad for x in xs)
     )
