@@ -198,9 +198,9 @@ class BCEWithLogitsLoss(nn.BCEWithLogitsLoss):
         # Y(LS=0) -> Y, Y(LS=1) -> 1/2
         # Y <- lerp(Y, 1/2, weight=LS)
         self.register_buffer(
-            'label_smoothing',
+            'smooth',
             (
-                torch.as_tensor(label_smoothing, torch.float)
+                torch.as_tensor(label_smoothing, dtype=torch.float)
                 if label_smoothing
                 else None
             ),

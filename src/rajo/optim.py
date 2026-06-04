@@ -82,13 +82,15 @@ class SingleGroupOptimizer(Optimizer):
         self.__dict__.update(
             {k: v for k, v in state.items() if k not in ('grads', 'states')}
         )
+        pairs: list[tuple[Tensor, Tensor]] = []
         for p, g in zip(self.states, state['grads']):
             if g is None:
                 p.grad = None
             elif p.grad is None:
-                p.grad = g.clone().detach_().to(p.device, non_blocking=True)
+                p.grad = g.to(p.device, non_blocking=True, copy=True)
             else:
-                p.grad.copy_(g.to(p.device, non_blocking=True, copy=False))
+                pairs.append((p.grad, g))
+        _foreach.copy_(*zip(*pairs), non_blocking=True)
 
         for dst, src in zip(self.states.values(), state['states']):
             dst[:] = src
@@ -198,7 +200,7 @@ class SGDW(SingleGroupOptimizer):
                 _foreach.add_(avg, grads, alpha=1 - self.dampening)
             else:
                 for grad, bufs_ in zip(grads, bufs):
-                    bufs_.append(grad.clone().detach_())
+                    bufs_.append(grad.clone())
                 avg = [bufs_[0] for bufs_ in bufs]
 
             if self.nesterov:
@@ -382,8 +384,7 @@ class Lion(SingleGroupOptimizer):
             _foreach.mul_(params, 1 - self.lr * self.weight_decay)
 
         update = _foreach.lerp(avg, grads, weight=1 - beta1)
-        for u in update:
-            u.sign_()
+        _foreach.sign_(update)
         _foreach.add_(params, update, alpha=-self.lr)
 
         _foreach.lerp_(avg, grads, weight=1 - beta2)
@@ -462,7 +463,7 @@ class Lamb(SingleGroupOptimizer):
             _foreach.clamp_max_(params_norm, self.clamp_value)
 
             trust_ratio = torch.where(
-                (update_norm * params_norm).bool(),
+                (params_norm * update_norm).bool(),
                 params_norm / update_norm,
                 torch.as_tensor(1, device=update_norm.device),
             )

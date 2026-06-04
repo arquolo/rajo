@@ -183,8 +183,6 @@ def class_probs(y_pred: Tensor, y: Tensor, /) -> tuple[Tensor, Tensor]:
     - y - `(B *)` indices.
 
     Returns:
-    - number of classes;
-    - share of valid samples w.r.t. full batch;
     - either NxC-matrix or N-vector of predicted probabilities;
     - N-vector of GT indices.
     """

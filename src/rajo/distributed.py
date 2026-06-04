@@ -7,6 +7,7 @@ __all__ = [
     'get_ddp_info',
 ]
 
+import copy
 import pickle
 from collections.abc import Callable
 from functools import update_wrapper
@@ -151,7 +152,7 @@ def broadcast_call[**P, R](fn: Callable[P, R], /) -> Callable[P, R]:
                 shared = ret = [fn(*args, **kwargs)]
             except BaseException as exc:  # noqa: BLE001
                 ret = exc
-                shared = exc.with_traceback(None)
+                shared = copy.copy(exc)
             handles[0] = bytes(ForkingPickler.dumps(shared))
 
         dist.broadcast_object_list(handles, src=0)

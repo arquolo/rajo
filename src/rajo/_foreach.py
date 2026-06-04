@@ -3,6 +3,7 @@ __all__ = [
     'addcdiv_',
     'addcmul_',
     'clamp_max_',
+    'copy_',
     'div',
     'lerp',
     'lerp_',
@@ -10,6 +11,7 @@ __all__ = [
     'mul',
     'mul_',
     'norm',
+    'sign_',
     'sqrt',
     'zero_',
 ]
@@ -99,6 +101,19 @@ def clamp_max_(
     else:
         for s in self:
             s.clamp_max_(other)
+
+
+def copy_(
+    self: Iterable[Tensor], other: Iterable[Tensor], non_blocking: bool = False
+) -> None:
+    """`self.copy_(other)`"""
+    self = list(self)
+    other = list(other)
+    if can_do_foreach(self + other):
+        torch._foreach_copy_(self, other, non_blocking=non_blocking)
+    else:
+        for s, o in zip(self, other):
+            s.copy_(o, non_blocking=non_blocking)
 
 
 def div(
@@ -194,6 +209,16 @@ def norm(
     if can_do_foreach(self):
         return list(torch._foreach_norm(self, p, dtype))
     return [s.norm(p, dtype=dtype) for s in self]
+
+
+def sign_(self: Iterable[Tensor]) -> None:
+    """`self.sign_()`"""
+    self = list(self)
+    if can_do_foreach(self):
+        torch._foreach_sign_(self)
+    else:
+        for s in self:
+            s.sign_()
 
 
 def sqrt(self: Iterable[Tensor]) -> list[Tensor]:
