@@ -7,11 +7,14 @@ from contextlib import contextmanager
 
 import torch
 from torch import Tensor, nn, optim
+from torch.optim.optimizer import Optimizer
 
 try:
     from .driver import get_gpu_capability
 except ImportError:
     get_gpu_capability = None  # type: ignore[assignment]
+
+from . import _foreach
 
 _MIN_SCALE = 2.0**-16
 _MAX_SCALE = 2.0**+16
@@ -61,7 +64,7 @@ class Grads:
 
     def __init__(
         self,
-        opt: optim.Optimizer,
+        opt: Optimizer,
         sched: optim.lr_scheduler._LRScheduler | None = None,
     ) -> None:
         self._opt = opt
@@ -125,12 +128,12 @@ class _ScalingGrads(Grads):
 
     def __init__(
         self,
-        opt: optim.Optimizer,
+        opt: Optimizer,
         sched: optim.lr_scheduler._LRScheduler | None = None,
         scale: float = _MAX_SCALE,
     ) -> None:
         super().__init__(opt, sched)
-        self._scaler = torch.amp.grad_scaler.GradScaler('cuda', scale)
+        self._scaler = torch.GradScaler('cuda', scale)
 
         if _PRIVATE:
             self._steps = getattr(self._opt, '_step_count', _NAN)
@@ -177,30 +180,41 @@ class _ScalingGrads(Grads):
 @contextmanager
 @torch.no_grad()
 def accumulating(params: Iterable[Tensor], done: int) -> Iterator[list[bool]]:
-    def _borrow(p: Tensor) -> Tensor | None:
+    # Per dtype/device/sparcity tensor groups
+    groups: dict[tuple, list[tuple[Tensor, Tensor | None]]] = {}
+    for p in params:
+        key = (p.device, p.dtype, p.is_sparse)
+
         # Save old state
-        grad, p.grad = p.grad, None
-        return None if grad is None else grad.detach_()
+        grad = None if p.grad is None else p.grad.detach_()
+        groups.setdefault(key, []).append((p, grad))
 
-    def _update(p: Tensor, grad: Tensor | None) -> None:
-        # In case the fail happened, or new grad is missing, use old grad
-        if inf[0] or p.grad is None:
-            p.grad = grad
+        # Clear to allow `backward()` populate
+        p.grad = None
 
-        # If both grads exist, do running mean update
-        elif grad is not None:
-            # mu' = (new + mu * n) / (1 + n)
-            #     = lerp(new, mu, n / (n + 1))
-            p.grad.lerp_(grad, done / (1 + done))
-
-    stash = {p: _borrow(p) for p in params}
     inf = [False]
     try:
         with torch.enable_grad():
             yield inf
     finally:
-        for p, grad in stash.items():
-            _update(p, grad)
+        weight = done / (1 + done)
+        for pgs in groups.values():
+            # On failure, or if param wasn't used during backward, use old grad
+            for p, grad in pgs:
+                if inf[0] or p.grad is None:
+                    p.grad = grad
+            if inf[0]:
+                continue
+
+            # If both grads exist, do running mean update
+            # mu' = (mu * n + new) / (n + 1)
+            #     = lerp(new, mu, n / (n + 1))
+            pairs = [
+                (p.grad, g)
+                for p, g in pgs
+                if p.grad is not None and g is not None
+            ]
+            _foreach.lerp_(*zip(*pairs), weight=weight)
 
 
 class _GenericScalingGrads(Grads):
@@ -227,14 +241,20 @@ class _GenericScalingGrads(Grads):
 
     def __init__(
         self,
-        opt: optim.Optimizer,
+        opt: Optimizer,
         sched: optim.lr_scheduler._LRScheduler | None = None,
         max_retries: int = 1,
         scale: float = _MAX_SCALE,
         min_scale: float | None = _MIN_SCALE,
+        growth_factor: float = 2.0,
+        backoff_factor: float = 0.5,
+        growth_interval: int = _PATIENCE,
     ) -> None:
         self._max_retries = max_retries
         self._min_scale = min_scale
+        self._growth_factor = growth_factor
+        self._backoff_factor = backoff_factor
+        self._growth_interval = growth_interval
 
         self._growth_tracker = torch.zeros(1).int()
         self._scale = torch.empty(1).fill_(scale)
@@ -279,7 +299,12 @@ class _GenericScalingGrads(Grads):
         found_inf = torch.stack(infs).sum(0)
 
         torch._amp_update_scale_(
-            self._scale, self._growth_tracker, found_inf, 2.0, 0.5, _PATIENCE
+            self._scale,
+            self._growth_tracker,
+            found_inf,
+            self._growth_factor,
+            self._backoff_factor,
+            self._growth_interval,
         )
 
     def backward(self, tensor: Tensor) -> None:
@@ -338,7 +363,7 @@ class _GenericScalingGrads(Grads):
 
 
 def get_grads(
-    opt: optim.Optimizer,
+    opt: Optimizer,
     sched: optim.lr_scheduler._LRScheduler | None = None,
     dtype: torch.dtype | None = None,
     max_retries: int = 1,

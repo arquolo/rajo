@@ -15,6 +15,7 @@ import torch
 from torch import Tensor, jit, nn
 from torch.utils.checkpoint import checkpoint
 
+from ..ops import cummean, cumsum
 from .lazy import LazyLayerNorm
 from .util import LazyNormFn
 
@@ -34,31 +35,16 @@ class Ensemble(nn.ModuleList):
         super().__init__(modules)
         self.mode = mode
 
-    def _cat(self, xs: list[Tensor]) -> Tensor:
-        return torch.cat(xs, dim=1)
-
-    def _sum(self, xs: list[Tensor]) -> Tensor:
-        r = xs[0]
-        for x in xs[1:]:
-            r += x
-        return r
-
-    def _mean(self, xs: list[Tensor]) -> Tensor:
-        r = xs[0]
-        for n, x in enumerate(xs[1:], 2):
-            r.lerp_(x, r.new_tensor(1 / n))
-        return r
-
     def forward(self, x: Tensor) -> Tensor:
         ys: list[Tensor] = [m(x) for m in self]
         if self.mode == 'cat':
-            return self._cat(ys)
+            return torch.cat(ys, dim=1)
 
         if self.mode == 'sum':
-            return self._sum(ys)
+            return cumsum(ys)
 
         if self.mode == 'mean':
-            return self._mean(ys)
+            return cummean(ys)
 
         raise NotImplementedError
 

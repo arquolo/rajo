@@ -1,4 +1,10 @@
-__all__ = ['laplace_kernel', 'pascal_triangle', 'rgb2gray_kernel']
+__all__ = [
+    'cummean',
+    'cumsum',
+    'laplace_kernel',
+    'pascal_triangle',
+    'rgb2gray_kernel',
+]
 
 import cv2
 import numpy as np
@@ -43,3 +49,17 @@ def rgb2gray_kernel() -> Tensor:
 
 def pascal_triangle(n: int) -> Tensor:
     return torch.from_numpy(pascal(n))
+
+
+def cumsum(xs: list[Tensor]) -> Tensor:
+    r = xs[0]
+    for x in xs[1:]:
+        r += x
+    return r
+
+
+def cummean(xs: list[Tensor]) -> Tensor:
+    r = xs[0]
+    for n, x in enumerate(xs[1:], 2):
+        r.lerp_(x, r.new_tensor(1 / n))
+    return r

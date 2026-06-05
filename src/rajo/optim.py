@@ -82,28 +82,31 @@ class SingleGroupOptimizer(Optimizer):
         self.__dict__.update(
             {k: v for k, v in state.items() if k not in ('grads', 'states')}
         )
-        pairs: list[tuple[Tensor, Tensor]] = []
+        groups: dict[tuple, list[tuple[Tensor, Tensor]]] = {}
         for p, g in zip(self.states, state['grads']):
             if g is None:
                 p.grad = None
             elif p.grad is None:
                 p.grad = g.to(p.device, non_blocking=True, copy=True)
             else:
-                pairs.append((p.grad, g))
-        _foreach.copy_(*zip(*pairs), non_blocking=True)
+                key = (p.grad.dtype, p.grad.device, g.dtype, g.device)
+                groups.setdefault(key, []).append((p.grad, g))
+
+        for pairs in groups.values():
+            _foreach.copy_(*zip(*pairs), non_blocking=True)
 
         for dst, src in zip(self.states.values(), state['states']):
             dst[:] = src
 
     def _state_groups(self) -> Iterable[_GradState]:
-        r: dict[tuple, _GradState] = defaultdict(
-            lambda: _GradState([], [], [])
-        )
+        r = defaultdict[
+            tuple[torch.device, torch.dtype, bool],
+            _GradState,
+        ](lambda: _GradState([], [], []))
         for p, ts in self.states.items():
             if p.grad is None:
                 continue
-            num_values = sum(t is not None for t in ts)
-            s = r[p.device, p.dtype, p.grad.is_sparse, num_values]
+            s = r[p.device, p.dtype, p.grad.is_sparse]
             s.p.append(p)
             s.grad.append(p.grad)
             s.bufs.append(ts)
@@ -194,15 +197,20 @@ class SGDW(SingleGroupOptimizer):
             _foreach.mul_(params, 1 - self.lr * self.weight_decay)
 
         if self.momentum != 0:
-            if bufs[0]:
-                avg = [bufs_[0] for bufs_ in bufs]
-                _foreach.mul_(avg, self.momentum)
-                _foreach.add_(avg, grads, alpha=1 - self.dampening)
-            else:
-                for grad, bufs_ in zip(grads, bufs):
-                    bufs_.append(grad.clone())
-                avg = [bufs_[0] for bufs_ in bufs]
+            # on first iteration:
+            #   avg = copy(grad)
+            # on others:
+            #   avg = avg * momentum + grad * (1 - dampening)
+            pairs: list[tuple[Tensor, Tensor]] = []
+            for grad, bufs_ in zip(grads, bufs):
+                if bufs_:
+                    pairs.append((bufs_[0], grad))  # avg + grad
+                else:
+                    bufs_[:] = [grad.clone()]
+            _foreach.mul_([a for a, _ in pairs], self.momentum)
+            _foreach.add_(*zip(*pairs), alpha=1 - self.dampening)
 
+            avg = [bufs_[0] for bufs_ in bufs]
             if self.nesterov:
                 _foreach.add_(grads, avg, alpha=self.momentum)
             else:
@@ -377,7 +385,7 @@ class Lion(SingleGroupOptimizer):
         bufs: Sequence[list[Tensor]],
         **kwargs,
     ) -> None:
-        (avg,) = self.zero_init(params, bufs, 1)
+        [avg] = self.zero_init(params, bufs, 1)
         beta1, beta2 = self.betas
 
         if self.weight_decay != 0:

@@ -5,7 +5,9 @@ __all__ = [
     'pad_conv_sym_same',
     'remove_infer_no_ops',
 ]
+
 import math
+from collections.abc import Iterator
 from functools import partial, singledispatch
 from typing import TYPE_CHECKING, TypeGuard
 
@@ -268,7 +270,7 @@ def _unpack_conv_gn_gelu(m: 'Conv3x3GNReLU') -> nn.Module:
 # ------------------------ flatten nested sequentials ------------------------
 
 
-def _unpack_seq(net: nn.Sequential):
+def _unpack_seq(net: nn.Sequential) -> Iterator[nn.Module]:
     for m in net.children():
         if _is_true_sequential(m):
             yield from _unpack_seq(m)
@@ -287,7 +289,7 @@ def flatten_seq(net: nn.Module) -> nn.Module:
     """
     todo = [m for m in net.modules() if _is_true_sequential(m)]
     for m in todo:
-        (*gcs,) = _unpack_seq(m)  # got flattened grand-children
+        [*gcs] = _unpack_seq(m)  # got flattened grand-children
         if gcs == [*m]:  # is already flat
             continue
         while len(m):  # make child empty

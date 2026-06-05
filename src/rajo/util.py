@@ -185,7 +185,7 @@ def dump_to_onnx(
             torch.rand(1, *s, requires_grad=True, device=device)
             for s in shapes
         ),
-        filepath,
+        str(filepath),
         opset_version=17,
         input_names=[*dynamic_axes],
         dynamic_axes=dynamic_axes,
