@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 import cv2
 import numpy as np
 import numpy.typing as npt
-from glow import apack
+from glow import apack, time_this
 
 
 class Indexer:
@@ -17,6 +17,7 @@ class Indexer:
         self.labels = {t: np.array([i]) for i, t in enumerate(labels)}
         self._dtype = np.min_scalar_type(self.rank - 1)
 
+    @time_this
     def label_indices(
         self,
         scores: npt.NDArray[np.number],
@@ -103,6 +104,7 @@ class MultiheadIndexer(Indexer):
         self.lut = lut
         self.labels = {t: np.unique(lut[m]) for t, m in zip(self.labels, mask)}
 
+    @time_this
     def label_indices(
         self,
         scores: npt.NDArray[np.number],
