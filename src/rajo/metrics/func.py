@@ -7,7 +7,6 @@ __all__ = [
 ]
 
 import torch
-from einops import rearrange
 from torch import Tensor
 
 from rajo.distributed import all_reduce
@@ -197,8 +196,8 @@ def class_probs(y_pred: Tensor, y: Tensor, /) -> tuple[Tensor, Tensor]:
         y_pred = y_pred.sigmoid().view(-1)  # (b n)
         c = 2
     else:
-        y_pred = y_pred.softmax(dim=1)
-        y_pred = rearrange(y_pred, 'b c ... -> (b ...) c')  # (b n) c
+        y_pred = y_pred.softmax(dim=1)  # b c ..
+        y_pred = y_pred.movedim(1, -1).reshape(-1, y_pred.shape[1])  # (b ..) c
 
     if y.dtype.is_floating_point:
         y = y.round().long()

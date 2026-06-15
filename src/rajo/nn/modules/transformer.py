@@ -10,7 +10,6 @@ from typing import Final, cast
 
 import torch
 import torch.nn.functional as F
-from einops import rearrange
 from einops.layers.torch import Rearrange
 from packaging.version import Version
 from torch import Tensor, nn
@@ -29,14 +28,15 @@ class ReAttention(nn.Sequential):
     """Re-Attention from [DeepViT](https://arxiv.org/abs/2103.11886)"""
 
     def __init__(self, heads: int) -> None:
-        ln = nn.Linear(heads, heads, bias=False)
-        super().__init__(
-            Rearrange('b h i j -> b i j h'),
-            ln,
-            nn.LayerNorm(heads),
-            Rearrange('b i j h -> b h i j'),
-        )
-        nn.init.normal_(ln.weight)
+        linear = nn.Linear(heads, heads, bias=False)
+        norm = nn.LayerNorm(heads)
+        super().__init__(linear, norm)
+        nn.init.normal_(linear.weight)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = x.movedim(1, -1)  # b h i j -> b i j h
+        x = super().forward(x)
+        return x.movedim(-1, 1)  # b i j h -> b h i j
 
 
 class Attention(nn.Module):
@@ -164,26 +164,28 @@ class Attention(nn.Module):
 
 
 class _RelativePositionalBias(nn.Module):
+    indices: Tensor
+
     def __init__(self, heads: int, window_size: int) -> None:
         super().__init__()
 
         wdiff = 2 * window_size - 1
-        self.bias = nn.Sequential(
-            nn.Embedding(wdiff**2, heads),
-            Rearrange('i j h -> h i j'),
-        )
-
+        self.bias = nn.Embedding(wdiff**2, heads)
+        # [i]
         axis = torch.arange(window_size)
-        grid = torch.stack(torch.meshgrid(axis, axis, indexing='ij'), -1)
-        pos = rearrange(grid, 'i j c -> (i j) 1 c') - rearrange(
-            grid, 'i j c -> 1 (i j) c'
-        )
-        pos -= pos.min()
-        indices = pos @ torch.tensor([wdiff, 1])
+        # [i i] of 1-w..w-1
+        pos = axis[:, None] - axis[None, :]
+        # [i i i i] of 2w(1-w)..2w(w-1)
+        indices = pos[:, None, :, None] * wdiff + pos[None, :, None, :]
+        # [(i i) (i i)]
+        indices = indices.reshape(window_size**2, window_size**2)
+        indices -= indices.min()  # 0..4w(w-1)
+
         self.register_buffer('indices', indices, persistent=False)
 
     def forward(self) -> Tensor:
-        return self.bias(self.indices)
+        emb = self.bias(self.indices)  # i j -> i j h
+        return emb.movedim(-1, 0)  # h i j
 
 
 class MultiAxisAttention(nn.Module):
